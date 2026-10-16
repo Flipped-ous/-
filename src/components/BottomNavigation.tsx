@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatedNumber } from './AnimatedNumber.tsx';
 
 export type NavTabId = 'today' | 'tasks' | 'projects' | 'review' | 'more';
 
@@ -69,7 +70,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({
                 </span>
                 {tab.id === 'tasks' && pendingCount > 0 && !isActive && (
                   <span className="absolute -top-1 -right-2 min-w-[14px] h-[14px] px-1 bg-[#A55340] text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                    {pendingCount > 9 ? '9+' : pendingCount}
+                    {pendingCount > 9 ? '9+' : <AnimatedNumber value={pendingCount} />}
                   </span>
                 )}
               </div>

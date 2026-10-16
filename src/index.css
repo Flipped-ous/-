@@ -57,7 +57,7 @@
   will-change: transform, opacity;
 }
 
-.paper-card:active {
+.paper-card:not([data-task-index]):active {
   transform: scale(0.985);
 }
 
@@ -87,15 +87,91 @@
   color: var(--text-muted);
 }
 
-/* Checkbox bounce animation */
+/* Checkbox micro-interactions */
 @keyframes checkBounce {
-  0% { transform: scale(0.8); }
-  55% { transform: scale(1.15); }
+  0% { transform: scale(0.85); }
+  55% { transform: scale(1.12); }
   100% { transform: scale(1); }
+}
+
+@keyframes checkmarkDraw {
+  0% {
+    stroke-dashoffset: 20;
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
 }
 
 .checkbox-icon-active {
   animation: checkBounce 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.checkmark-path {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 0;
+  animation: checkmarkDraw 220ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+/* Number roll & slide transitions (Paper Link feedback) */
+@keyframes numberRollUp {
+  0% {
+    opacity: 0.35;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes numberRollDown {
+  0% {
+    opacity: 0.35;
+    transform: translateY(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-number-roll-up {
+  animation: numberRollUp 220ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+.animate-number-roll-down {
+  animation: numberRollDown 220ms cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+/* Accordion Grid Animation: physical paper fold / unfold */
+.accordion-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 300ms cubic-bezier(0.25, 1, 0.5, 1), opacity 260ms ease;
+  opacity: 0;
+}
+
+.accordion-grid.expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.accordion-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* View transitions for smooth theme changes */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Subtle organic sage green ambient corner glow:

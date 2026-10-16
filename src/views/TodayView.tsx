@@ -1,17 +1,25 @@
 import React, { useState } from 'react';
 import type { Task } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
+import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
+import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
 
 interface TodayViewProps {
   tasks: Task[];
   onToggleTask: (taskId: string) => void;
   onOpenAddTask: () => void;
+  onDeleteTask?: (taskId: string) => void;
+  onEditTask?: (task: Task) => void;
+  onReorderTasks?: (fromIdx: number, toIdx: number) => void;
 }
 
 export const TodayView: React.FC<TodayViewProps> = ({
   tasks,
   onToggleTask,
   onOpenAddTask,
+  onDeleteTask,
+  onEditTask,
+  onReorderTasks,
 }) => {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(true);
@@ -26,21 +34,6 @@ export const TodayView: React.FC<TodayViewProps> = ({
   const totalCount = tasks.length;
   const completedCount = completedTasks.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-
-  // Badge background and text colors
-  const getBadgeStyle = (badgeType?: string) => {
-    switch (badgeType) {
-      case 'terracotta':
-        return 'bg-[#FDEAE6] dark:bg-[#432722] text-[#A55340] dark:text-[#E08570]';
-      case 'sage':
-        return 'bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C]';
-      case 'amber':
-        return 'bg-[#FBF1E2] dark:bg-[#403323] text-[#C88A3A] dark:text-[#E2A657]';
-      case 'gray':
-      default:
-        return 'bg-[#EFEAE2] dark:bg-[#38322B] text-[#786E64] dark:text-[#A89E92]';
-    }
-  };
 
   return (
     <div className="flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
@@ -75,8 +68,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
       <div className="flex items-baseline justify-between mb-3.5">
         <div>
           <div className="flex items-baseline gap-2">
-            <h2 className="text-[22px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-              今日待办 · {totalCount}项
+            <h2 className="text-[22px] font-bold text-[#28231D] dark:text-[#EDE6DE] flex items-baseline">
+              今日待办 · <AnimatedNumber value={totalCount} className="mx-1" />项
             </h2>
           </div>
           <p className="text-[12px] text-[#786E64] dark:text-[#A89E92] mt-0.5">
@@ -84,9 +77,10 @@ export const TodayView: React.FC<TodayViewProps> = ({
           </p>
         </div>
 
-        {/* Subtle Progress Capsule */}
-        <div className="px-2.5 py-1 rounded-full bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C] text-[11px] font-medium shrink-0">
-          进行度 {progressPercent}%
+        {/* Subtle Progress Capsule with rolling percent */}
+        <div className="px-2.5 py-1 rounded-full bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C] text-[11px] font-medium shrink-0 flex items-center gap-0.5">
+          <span>进行度</span>
+          <AnimatedNumber value={progressPercent} suffix="%" />
         </div>
       </div>
 
@@ -103,71 +97,19 @@ export const TodayView: React.FC<TodayViewProps> = ({
       />
 
       {/* Pending Tasks List */}
-      <div className="flex flex-col gap-2.5">
-        {displayedPending.map((task) => (
-          <article
+      <div className="flex flex-col gap-1 transition-all duration-300">
+        {displayedPending.map((task, idx) => (
+          <SwipeableTaskItem
             key={task.id}
-            className="paper-card rounded-[14px] p-3.5 relative overflow-hidden group transition-all"
-          >
-            <div className="flex items-start gap-3">
-              {/* Checkbox */}
-              <button
-                type="button"
-                onClick={() => onToggleTask(task.id)}
-                aria-label={`完成 ${task.title}`}
-                className="w-5 h-5 mt-0.5 rounded-[5px] border-[1.5px] border-[#A89D91] dark:border-[#796F64] bg-white dark:bg-[#342E28] hover:border-[#A55340] flex items-center justify-center shrink-0 active:scale-90 transition-transform cursor-pointer"
-              >
-                {/* empty for pending */}
-              </button>
-
-              {/* Text content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-1.5">
-                  <h3 className="text-[14.5px] font-medium text-[#28231D] dark:text-[#EDE6DE] leading-snug">
-                    {task.title}
-                  </h3>
-                  {task.badgeLabel && (
-                    <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${getBadgeStyle(
-                        task.badgeType
-                      )}`}
-                    >
-                      {task.badgeLabel}
-                    </span>
-                  )}
-                </div>
-
-                {task.note && (
-                  <p className="text-[12px] text-[#786E64] dark:text-[#A89E92] mt-1 leading-relaxed">
-                    {task.note}
-                  </p>
-                )}
-
-                {/* Bottom line: time & project */}
-                <div className="flex items-center gap-2 mt-2 text-[11.5px] text-[#786E64] dark:text-[#A89E92]">
-                  {task.dueTime && (
-                    <span className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[13px] leading-none">
-                        schedule
-                      </span>
-                      {task.dueTime}
-                    </span>
-                  )}
-                  {task.dueTime && task.project && (
-                    <span className="text-[#D3C9BD] dark:text-[#5E544A] text-[10px]">·</span>
-                  )}
-                  {task.project && (
-                    <span className="flex items-center gap-1">
-                      <span className="material-symbols-outlined text-[13px] leading-none">
-                        folder
-                      </span>
-                      {task.project}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          </article>
+            task={task}
+            index={idx}
+            variant="card"
+            showDetails={true}
+            onToggle={() => onToggleTask(task.id)}
+            onDelete={() => onDeleteTask?.(task.id)}
+            onEdit={onEditTask}
+            onReorder={(dragIdx, hoverIdx) => onReorderTasks?.(dragIdx, hoverIdx)}
+          />
         ))}
 
         {displayedPending.length === 0 && filter === 'pending' && (
@@ -177,7 +119,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
         )}
       </div>
 
-      {/* Completed Section (Collapsible) */}
+      {/* Completed Section (Accordion Collapsible) */}
       {displayedCompleted.length > 0 && filter !== 'pending' && (
         <section className="mt-4">
           <button
@@ -189,7 +131,9 @@ export const TodayView: React.FC<TodayViewProps> = ({
               <span className="material-symbols-outlined text-[16px] text-[#6C8271]">
                 check_circle
               </span>
-              <span>已完成 ({displayedCompleted.length})</span>
+              <span className="inline-flex items-center">
+                已完成 (<AnimatedNumber value={displayedCompleted.length} />)
+              </span>
             </div>
             <span
               className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${
@@ -200,72 +144,28 @@ export const TodayView: React.FC<TodayViewProps> = ({
             </span>
           </button>
 
-          {isCompletedExpanded && (
-            <div className="flex flex-col gap-2 mt-1.5">
-              {displayedCompleted.map((task) => (
-                <article
-                  key={task.id}
-                  className="paper-card is-completed rounded-[14px] p-3.5 relative overflow-hidden bg-white/70 dark:bg-[#27221E]/60 opacity-75 transition-all"
-                >
-                  <div className="flex items-start gap-3">
-                    <button
-                      type="button"
-                      onClick={() => onToggleTask(task.id)}
-                      aria-label={`撤销完成 ${task.title}`}
-                      className="w-5 h-5 mt-0.5 rounded-[5px] bg-[#6C8271] border-[1.5px] border-[#6C8271] flex items-center justify-center shrink-0 active:scale-90 transition-transform cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[15px] text-white checkbox-icon-active leading-none">
-                        check
-                      </span>
-                    </button>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1.5">
-                        <h3 className="title-line text-[14.5px] font-normal leading-snug">
-                          {task.title}
-                        </h3>
-                        {task.badgeLabel && (
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${getBadgeStyle(
-                              task.badgeType
-                            )}`}
-                          >
-                            {task.badgeLabel}
-                          </span>
-                        )}
-                      </div>
-
-                      {task.note && (
-                        <p className="text-[12px] text-[#786E64]/80 dark:text-[#A89E92]/80 mt-1">
-                          {task.note}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-2 mt-2 text-[11.5px] text-[#786E64]/70 dark:text-[#A89E92]/70">
-                        {task.dueTime && (
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[13px] leading-none">
-                              schedule
-                            </span>
-                            {task.dueTime}
-                          </span>
-                        )}
-                        {task.dueTime && task.project && <span>·</span>}
-                        {task.project && (
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[13px] leading-none">
-                              folder
-                            </span>
-                            {task.project}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              ))}
+          <div
+            className={`accordion-grid mt-1.5 ${
+              isCompletedExpanded ? 'expanded' : ''
+            }`}
+          >
+            <div className="accordion-inner">
+              <div className="flex flex-col gap-1">
+                {displayedCompleted.map((task, idx) => (
+                  <SwipeableTaskItem
+                    key={task.id}
+                    task={task}
+                    index={idx}
+                    variant="card"
+                    showDetails={true}
+                    onToggle={() => onToggleTask(task.id)}
+                    onDelete={() => onDeleteTask?.(task.id)}
+                    onEdit={onEditTask}
+                  />
+                ))}
+              </div>
             </div>
-          )}
+          </div>
         </section>
       )}
     </div>

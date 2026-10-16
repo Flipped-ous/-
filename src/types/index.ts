@@ -10,15 +10,20 @@ export interface Task {
   note?: string;
   status: 'pending' | 'completed';
   priority: PriorityLevel;
-  dueCategory: DueCategory;
+  dueAt?: string; // ISO datetime
+  reminderAt?: string;
+  dueCategory?: DueCategory; // Derived dynamically
   dueTime?: string;
   dueLabel?: string;
-  project: string;
+  projectId?: string; // Relation to Project.id
+  project: string; // Project display title
   badgeLabel?: string;
   badgeType?: 'terracotta' | 'sage' | 'amber' | 'gray';
   tags?: string[];
   createdAt: string;
+  updatedAt: string;
   completedAt?: string;
+  order?: number;
 }
 
 export type ProjectStatus = 'active' | 'paused' | 'archived';
@@ -34,19 +39,13 @@ export interface Project {
   name: string;
   description: string;
   status: ProjectStatus;
-  statusLabel: string;
-  statusType: 'terracotta' | 'sage' | 'amber' | 'gray';
-  pendingCount: number;
-  completedCount: number;
-  docCount: number;
-  isExpanded?: boolean;
-  innerTasks?: {
-    id: string;
-    title: string;
-    dueText: string;
-    completed: boolean;
-  }[];
+  statusLabel?: string;
+  statusType?: 'terracotta' | 'sage' | 'amber' | 'gray';
   docs?: string[];
+  docCount?: number;
+  isExpanded?: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type ReviewMood = '平静' | '心流' | '有进展' | '专注' | '洞察' | '疲惫' | '焦虑';
@@ -61,6 +60,8 @@ export interface ReviewEntry {
   wordCount: number;
   time: string;
   type: 'day' | 'week' | 'month';
+  createdAt: string;
+  updatedAt: string;
   imageUrl?: string;
   imageCaption?: string;
   stats?: {
@@ -68,7 +69,7 @@ export interface ReviewEntry {
     delayed: number;
     added: number;
     topProject: string;
-    hours: string;
+    hours?: string;
   };
 }
 
@@ -88,8 +89,14 @@ export interface AppSettings {
   motion: 'simple' | 'standard' | 'rich';
   motionEnabled: boolean;
   notification: 'gentle' | 'important' | 'all' | 'off';
-  dataSizeMb: number;
-  pendingCountTotal: number;
-  activeProjectsTotal: number;
-  reviewsTotal: number;
+  dataSizeMb?: number;
+}
+
+export interface BackupData {
+  schemaVersion: number;
+  exportedAt: string;
+  tasks: Task[];
+  projects: Project[];
+  reviews: ReviewEntry[];
+  settings?: Partial<AppSettings>;
 }

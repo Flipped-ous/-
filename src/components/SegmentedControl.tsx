@@ -1,4 +1,5 @@
 import React from 'react';
+import { AnimatedNumber } from './AnimatedNumber.tsx';
 
 interface SegmentOption<T extends string> {
   id: T;
@@ -50,7 +51,9 @@ export function SegmentedControl<T extends string>({
           >
             <span>{opt.label}</span>
             {opt.count !== undefined && (
-              <span className="ml-1 text-[11px] opacity-80">({opt.count})</span>
+              <span className="ml-1 text-[11px] opacity-80 inline-flex items-center">
+                (<AnimatedNumber value={opt.count} />)
+              </span>
             )}
           </button>
         );

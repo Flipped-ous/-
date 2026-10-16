@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ReviewEntry, ReviewMood } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
+import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
 
 interface ReviewViewProps {
   reviews: ReviewEntry[];
@@ -103,10 +104,12 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             </span>
             <span>待办系统联动收揽</span>
           </div>
-          <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">今日·4月17日</span>
+          <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">
+            今日 · {new Date().getMonth() + 1}月{new Date().getDate()}日
+          </span>
         </div>
 
-        {/* 3 Metric counters */}
+        {/* 3 Metric counters with linked animated number roll */}
         <div className="grid grid-cols-3 gap-2 mb-3">
           <div className="rounded-xl bg-[#FAF6EF] dark:bg-[#342E28] p-2.5 text-center">
             <div className="flex items-center justify-center gap-1 text-[11px] text-[#786E64] dark:text-[#A89E92] mb-0.5">
@@ -114,7 +117,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               <span>今日完成</span>
             </div>
             <div className="text-[18px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-              {stats.completed}
+              <AnimatedNumber value={stats.completed} />
             </div>
           </div>
 
@@ -124,7 +127,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               <span>延期</span>
             </div>
             <div className="text-[18px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-              {stats.delayed}
+              <AnimatedNumber value={stats.delayed} />
             </div>
           </div>
 
@@ -134,7 +137,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               <span>新增</span>
             </div>
             <div className="text-[18px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-              {stats.added}
+              <AnimatedNumber value={stats.added} />
             </div>
           </div>
         </div>
@@ -142,22 +145,21 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         {/* Main focus row */}
         <div className="pt-2 border-t border-[#746B61]/8 dark:border-[#5E544A]/15 flex items-center justify-between text-[11.5px] text-[#786E64] dark:text-[#A89E92]">
           <div className="flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[14px] text-[#6C8271]">schedule</span>
+            <span className="material-symbols-outlined text-[14px] text-[#6C8271]">spa</span>
             <span className="font-medium text-[#28231D] dark:text-[#EDE6DE]">
-              主要投入：{stats.topProject} · {stats.hours}
+              今日主要投入：{stats.topProject}
             </span>
           </div>
-          <span className="material-symbols-outlined text-[15px] opacity-60">expand_more</span>
         </div>
         <div className="text-[11px] text-[#786E64] dark:text-[#A89E92] mt-0.5 pl-5">
-          核心模块重构完毕，心流专注度良好
+          物来顺应，当时不杂，心流专注度良好
         </div>
       </section>
 
       {/* Review Entries Header */}
       <div className="flex items-center justify-between mb-2.5 px-1">
         <span className="text-[13px] font-semibold text-[#28231D] dark:text-[#EDE6DE]">
-          墨迹记录 <span className="text-[12px] font-normal text-[#786E64]">共 18 篇</span>
+          墨迹记录 <span className="text-[12px] font-normal text-[#786E64]">共 {reviews.length} 篇</span>
         </span>
         <button
           type="button"
