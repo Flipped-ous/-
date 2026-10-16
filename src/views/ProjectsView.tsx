@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import type { Project, Task } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
+import { motion } from 'motion/react';
+import { useMotion } from '../motion/MotionProvider.tsx';
+import { useDialog } from '../hooks/useDialog.ts';
 import { formatDueLabel } from '../utils/taskLogic.ts';
 
 interface ProjectsViewProps {
@@ -19,11 +22,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onToggleTask,
   onEditTask,
 }) => {
-  const [filter, setFilter] = useState<'all' | 'active' | 'paused' | 'archived'>('all');
+  const config = useMotion();
+  const [filter, setFilter] = useState<
+    'all' | 'active' | 'paused' | 'archived'
+  >('all');
   const [expandedId, setExpandedId] = useState<string | null>('proj-1');
   const [showNewModal, setShowNewModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
+
+  useDialog(showNewModal, () => setShowNewModal(false));
 
   const filteredProjects = projects.filter((p) => {
     if (filter === 'all') return true;
@@ -80,8 +88,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           onClick={() => setShowNewModal(true)}
           className="h-8 pl-2.5 pr-3 rounded-full bg-[#A55340] hover:bg-[#873C2A] text-white flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
         >
-          <span className="material-symbols-outlined text-[17px] leading-none">add</span>
-          <span className="text-[12px] font-medium tracking-wide">新建项目</span>
+          <span className="material-symbols-outlined text-[17px] leading-none">
+            add
+          </span>
+          <span className="text-[12px] font-medium tracking-wide">
+            新建项目
+          </span>
         </button>
       </header>
 
@@ -105,14 +117,25 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
           // Real-time dynamic calculation from unified tasks
           const projectTasks = tasks.filter(
-            (t) => t.projectId === project.id || t.project === project.name
+            (t) => t.projectId === project.id || t.project === project.name,
           );
-          const pendingCount = projectTasks.filter((t) => t.status === 'pending').length;
-          const completedCount = projectTasks.filter((t) => t.status === 'completed').length;
+          const pendingCount = projectTasks.filter(
+            (t) => t.status === 'pending',
+          ).length;
+          const completedCount = projectTasks.filter(
+            (t) => t.status === 'completed',
+          ).length;
           const docCount = project.docCount || project.docs?.length || 0;
 
           return (
-            <article
+            <motion.article
+              layout={config.allowScaleEffects}
+              layoutId={
+                config.allowParallax ? `project-${project.id}` : undefined
+              }
+              transition={{
+                layout: { duration: config.durations.listReflow / 1000 },
+              }}
               key={project.id}
               className="paper-card rounded-[16px] bg-white dark:bg-[#27221E] overflow-hidden transition-all duration-300"
             >
@@ -137,11 +160,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       project.statusType === 'terracotta'
                         ? 'bg-[#FDEAE6] dark:bg-[#432722] text-[#A55340] dark:text-[#E08570]'
                         : project.statusType === 'sage'
-                        ? 'bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C]'
-                        : 'bg-[#FBF1E2] dark:bg-[#403323] text-[#C88A3A] dark:text-[#E2A657]'
+                          ? 'bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C]'
+                          : 'bg-[#FBF1E2] dark:bg-[#403323] text-[#C88A3A] dark:text-[#E2A657]'
                     }`}
                   >
-                    {project.statusLabel || (project.status === 'active' ? '● 进行中' : '● 已暂停')}
+                    {project.statusLabel ||
+                      (project.status === 'active' ? '● 进行中' : '● 已暂停')}
                   </span>
                 </div>
 
@@ -153,7 +177,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 {/* Stats row derived dynamically */}
                 <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-[#746B61]/8 dark:border-[#5E544A]/15 text-[11.5px] text-[#786E64] dark:text-[#A89E92]">
                   <span className="inline-flex items-center gap-1">
-                    待办 <AnimatedNumber value={pendingCount} /> · 已完成 <AnimatedNumber value={completedCount} /> · 资料 {docCount}
+                    待办 <AnimatedNumber value={pendingCount} /> · 已完成{' '}
+                    <AnimatedNumber value={completedCount} /> · 资料 {docCount}
                   </span>
                   <span className="text-[11px] text-[#A55340] dark:text-[#C76E59] flex items-center gap-0.5">
                     {isExpanded ? '收起详情' : '点击展开'}
@@ -179,7 +204,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           <span className="material-symbols-outlined text-[14px] text-[#6C8271]">
                             task_alt
                           </span>
-                          项目待办清单 (<AnimatedNumber value={pendingCount} /> 待办)
+                          项目待办清单 (<AnimatedNumber value={pendingCount} />{' '}
+                          待办)
                         </span>
                         <span className="text-[11px] opacity-75">
                           共 <AnimatedNumber value={projectTasks.length} /> 项
@@ -254,7 +280,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             </span>
                             关联知识与资料
                           </span>
-                          <span className="text-[11px] opacity-75">{docCount} 份</span>
+                          <span className="text-[11px] opacity-75">
+                            {docCount} 份
+                          </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {project.docs.map((doc, i) => (
@@ -274,7 +302,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   </div>
                 </div>
               </div>
-            </article>
+            </motion.article>
           );
         })}
       </div>
@@ -290,7 +318,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               聚合心智，使步调如常
             </p>
 
-            <form onSubmit={handleCreateProject} className="flex flex-col gap-3">
+            <form
+              role="dialog"
+              aria-modal="true"
+              aria-label="新建项目"
+              onSubmit={handleCreateProject}
+              className="flex flex-col gap-3"
+            >
               <div>
                 <label className="block text-[12px] font-medium text-[#786E64] dark:text-[#A89E92] mb-1">
                   项目名称

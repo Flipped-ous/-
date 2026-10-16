@@ -10,10 +10,10 @@ interface UndoSnackbarProps {
 
 export const UndoSnackbar: React.FC<UndoSnackbarProps> = ({
   visible,
-  message = '已删除任务',
+  message = '��ɾ������',
   onUndo,
   onDismiss,
-  duration = 4500,
+  duration = 5000,
 }) => {
   useEffect(() => {
     if (!visible) return;
@@ -21,7 +21,7 @@ export const UndoSnackbar: React.FC<UndoSnackbarProps> = ({
       onDismiss();
     }, duration);
     return () => clearTimeout(timer);
-  }, [visible, duration, onDismiss]);
+  }, [visible, duration, onDismiss, message]);
 
   if (!visible) return null;
 
@@ -38,7 +38,7 @@ export const UndoSnackbar: React.FC<UndoSnackbarProps> = ({
           onClick={onUndo}
           className="text-[#E08570] dark:text-[#A55340] font-bold text-[13px] hover:underline cursor-pointer active:scale-95 transition-transform"
         >
-          撤销
+          ����
         </button>
       </div>
     </div>

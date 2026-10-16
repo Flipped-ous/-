@@ -88,7 +88,16 @@ export const motionConfigs: Record<MotionLevel, MotionConfig> = {
   },
 };
 
-export function getMotionConfig(level: MotionLevel = 'standard', enabled = true): MotionConfig {
-  if (!enabled) return motionConfigs.simple;
+export function getMotionConfig(
+  level: MotionLevel = 'standard',
+  enabled = true,
+): MotionConfig {
+  if (!enabled)
+    return {
+      ...motionConfigs.simple,
+      durations: Object.fromEntries(
+        Object.keys(motionConfigs.simple.durations).map((key) => [key, 0]),
+      ) as MotionConfig['durations'],
+    };
   return motionConfigs[level] || motionConfigs.standard;
 }

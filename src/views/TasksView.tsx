@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import type { Task } from '../types/index.ts';
+import type { Task, DueCategory } from '../types/index.ts';
 import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
-import { groupTasksByDate, groupTasksByQuadrant } from '../utils/taskLogic.ts';
+import { SegmentedControl } from '../components/SegmentedControl.tsx';
+import {
+  filterTasks,
+  groupTasksByDate,
+  groupTasksByQuadrant,
+} from '../utils/taskLogic.ts';
 
 interface TasksViewProps {
   tasks: Task[];
@@ -10,7 +15,11 @@ interface TasksViewProps {
   onDeleteTask: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
   onOpenAddTask: () => void;
-  onReorderTasks?: (section: 'overdue' | 'today' | 'future' | 'none', fromIdx: number, toIdx: number) => void;
+  onReorderTasks?: (
+    id: string,
+    targetId: string,
+    category?: DueCategory,
+  ) => void;
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
@@ -23,7 +32,13 @@ export const TasksView: React.FC<TasksViewProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<'date' | 'quadrant'>('date');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+  const [showFilter, setShowFilter] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'pending' | 'completed'
+  >('all');
+  const [expandedSections, setExpandedSections] = useState<
+    Record<string, boolean>
+  >({
     overdue: true,
     today: true,
     future: true,
@@ -35,19 +50,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
   };
 
   // Filter tasks with search
-  const filteredTasks = tasks.filter((task) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      task.title.toLowerCase().includes(q) ||
-      task.project?.toLowerCase().includes(q) ||
-      task.tags?.some((t) => t.toLowerCase().includes(q))
-    );
-  });
+  const filteredTasks = filterTasks(tasks, statusFilter, searchQuery);
 
   // Group dynamically by date using real time model
-  const { overdue: overdueTasks, today: todayTasks, future: futureTasks, none: noneTasks } =
-    groupTasksByDate(filteredTasks);
+  const {
+    overdue: overdueTasks,
+    today: todayTasks,
+    future: futureTasks,
+    none: noneTasks,
+  } = groupTasksByDate(filteredTasks);
 
   // Group dynamically by quadrants
   const {
@@ -78,6 +89,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
           <button
             type="button"
             className="w-8 h-8 rounded-full bg-[#F5F1E8] dark:bg-[#342E28] hover:bg-[#EBE4D6] text-[#786E64] dark:text-[#A89E92] flex items-center justify-center transition-colors cursor-pointer"
+            onClick={() => setShowFilter(!showFilter)}
+            aria-expanded={showFilter}
             title="筛选"
             aria-label="筛选"
           >
@@ -90,8 +103,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
             onClick={onOpenAddTask}
             className="h-8 pl-2.5 pr-3 rounded-full bg-[#A55340] hover:bg-[#873C2A] text-white flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[17px] leading-none">add</span>
-            <span className="text-[12px] font-medium tracking-wide">新建任务</span>
+            <span className="material-symbols-outlined text-[17px] leading-none">
+              add
+            </span>
+            <span className="text-[12px] font-medium tracking-wide">
+              新建任务
+            </span>
           </button>
         </div>
       </header>
@@ -113,6 +130,18 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
       </div>
 
+      {showFilter && (
+        <SegmentedControl
+          className="mb-3"
+          activeId={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { id: 'all', label: '全部' },
+            { id: 'pending', label: '待完成' },
+            { id: 'completed', label: '已完成' },
+          ]}
+        />
+      )}
       {/* Mode Switcher: 按日期分组 vs 四象限 */}
       <div className="relative w-full bg-[#EBE4D6] dark:bg-[#342E28] p-1 rounded-xl flex items-center mb-3.5 select-none">
         <button
@@ -124,7 +153,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
               : 'text-[#786E64] dark:text-[#A89E92]'
           }`}
         >
-          <span className="material-symbols-outlined text-[15px]">calendar_view_day</span>
+          <span className="material-symbols-outlined text-[15px]">
+            calendar_view_day
+          </span>
           按日期分组
         </button>
         <button
@@ -136,7 +167,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
               : 'text-[#786E64] dark:text-[#A89E92]'
           }`}
         >
-          <span className="material-symbols-outlined text-[15px]">grid_view</span>
+          <span className="material-symbols-outlined text-[15px]">
+            grid_view
+          </span>
           四象限
         </button>
       </div>
@@ -146,7 +179,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         <div className="flex flex-col gap-3.5">
           {/* 1. 逾期 */}
           {overdueTasks.length > 0 && (
-            <section>
+            <section data-drop-category="overdue" role="list">
               <div
                 onClick={() => toggleSection('overdue')}
                 className="flex items-center justify-between py-1 px-1 cursor-pointer select-none"
@@ -168,19 +201,22 @@ export const TasksView: React.FC<TasksViewProps> = ({
                 </span>
               </div>
 
-              <div className={`accordion-grid ${expandedSections.overdue ? 'expanded' : ''}`}>
+              <div
+                className={`accordion-grid ${expandedSections.overdue ? 'expanded' : ''}`}
+              >
                 <div className="accordion-inner">
                   <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1 border-l-2 border-l-[#A55340]">
                     {overdueTasks.map((task, idx) => (
                       <SwipeableTaskItem
                         key={task.id}
                         task={task}
+                        group="overdue"
                         index={idx}
                         isLast={idx === overdueTasks.length - 1}
                         onToggle={() => onToggleTask(task.id)}
                         onDelete={() => onDeleteTask(task.id)}
                         onEdit={onEditTask}
-                        onReorder={(dragIdx, hoverIdx) => onReorderTasks?.('overdue', dragIdx, hoverIdx)}
+                        onReorder={onReorderTasks}
                       />
                     ))}
                   </div>
@@ -190,7 +226,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           )}
 
           {/* 2. 今天 */}
-          <section>
+          <section data-drop-category="today" role="list">
             <div
               onClick={() => toggleSection('today')}
               className="flex items-center justify-between py-1 px-1 cursor-pointer select-none"
@@ -212,7 +248,9 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </span>
             </div>
 
-            <div className={`accordion-grid ${expandedSections.today ? 'expanded' : ''}`}>
+            <div
+              className={`accordion-grid ${expandedSections.today ? 'expanded' : ''}`}
+            >
               <div className="accordion-inner">
                 <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1">
                   {todayTasks.length > 0 ? (
@@ -220,16 +258,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
                       <SwipeableTaskItem
                         key={task.id}
                         task={task}
+                        group="today"
                         index={idx}
                         isLast={idx === todayTasks.length - 1}
                         onToggle={() => onToggleTask(task.id)}
                         onDelete={() => onDeleteTask(task.id)}
                         onEdit={onEditTask}
-                        onReorder={(dragIdx, hoverIdx) => onReorderTasks?.('today', dragIdx, hoverIdx)}
+                        onReorder={onReorderTasks}
                       />
                     ))
                   ) : (
-                    <div className="py-4 text-center text-[12px] text-[#786E64]">今日待办已清空</div>
+                    <div className="py-4 text-center text-[12px] text-[#786E64]">
+                      今日待办已清空
+                    </div>
                   )}
                 </div>
               </div>
@@ -237,7 +278,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </section>
 
           {/* 3. 未来 */}
-          <section>
+          <section data-drop-category="future" role="list">
             <div
               onClick={() => toggleSection('future')}
               className="flex items-center justify-between py-1 px-1 cursor-pointer select-none"
@@ -254,22 +295,27 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   未来 (<AnimatedNumber value={futureTasks.length} />)
                 </span>
               </div>
-              <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">规划步调</span>
+              <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">
+                规划步调
+              </span>
             </div>
 
-            <div className={`accordion-grid ${expandedSections.future ? 'expanded' : ''}`}>
+            <div
+              className={`accordion-grid ${expandedSections.future ? 'expanded' : ''}`}
+            >
               <div className="accordion-inner">
                 <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1">
                   {futureTasks.map((task, idx) => (
                     <SwipeableTaskItem
                       key={task.id}
                       task={task}
+                      group="future"
                       index={idx}
                       isLast={idx === futureTasks.length - 1}
                       onToggle={() => onToggleTask(task.id)}
                       onDelete={() => onDeleteTask(task.id)}
                       onEdit={onEditTask}
-                      onReorder={(dragIdx, hoverIdx) => onReorderTasks?.('future', dragIdx, hoverIdx)}
+                      onReorder={onReorderTasks}
                     />
                   ))}
                 </div>
@@ -278,7 +324,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </section>
 
           {/* 4. 未安排 */}
-          <section>
+          <section data-drop-category="none" role="list">
             <div
               onClick={() => toggleSection('none')}
               className="flex items-center justify-between py-1 px-1 cursor-pointer select-none"
@@ -295,22 +341,27 @@ export const TasksView: React.FC<TasksViewProps> = ({
                   未安排 (<AnimatedNumber value={noneTasks.length} />)
                 </span>
               </div>
-              <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">灵感暂存</span>
+              <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">
+                灵感暂存
+              </span>
             </div>
 
-            <div className={`accordion-grid ${expandedSections.none ? 'expanded' : ''}`}>
+            <div
+              className={`accordion-grid ${expandedSections.none ? 'expanded' : ''}`}
+            >
               <div className="accordion-inner">
                 <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1">
                   {noneTasks.map((task, idx) => (
                     <SwipeableTaskItem
                       key={task.id}
                       task={task}
+                      group="none"
                       index={idx}
                       isLast={idx === noneTasks.length - 1}
                       onToggle={() => onToggleTask(task.id)}
                       onDelete={() => onDeleteTask(task.id)}
                       onEdit={onEditTask}
-                      onReorder={(dragIdx, hoverIdx) => onReorderTasks?.('none', dragIdx, hoverIdx)}
+                      onReorder={onReorderTasks}
                     />
                   ))}
                 </div>
@@ -327,6 +378,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             color="terracotta"
             tasks={quadrant1}
             onToggle={onToggleTask}
+            onEdit={onEditTask}
           />
           <QuadrantBox
             title="重要不紧急"
@@ -334,6 +386,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             color="sage"
             tasks={quadrant2}
             onToggle={onToggleTask}
+            onEdit={onEditTask}
           />
           <QuadrantBox
             title="紧急不重要"
@@ -341,6 +394,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             color="amber"
             tasks={quadrant3}
             onToggle={onToggleTask}
+            onEdit={onEditTask}
           />
           <QuadrantBox
             title="不重要不紧急"
@@ -348,6 +402,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             color="gray"
             tasks={quadrant4}
             onToggle={onToggleTask}
+            onEdit={onEditTask}
           />
         </div>
       )}
@@ -362,7 +417,8 @@ const QuadrantBox: React.FC<{
   color: 'terracotta' | 'sage' | 'amber' | 'gray';
   tasks: Task[];
   onToggle: (id: string) => void;
-}> = ({ title, badge, color, tasks, onToggle }) => {
+  onEdit?: (task: Task) => void;
+}> = ({ title, badge, color, tasks, onToggle, onEdit }) => {
   const getHeaderColor = () => {
     switch (color) {
       case 'terracotta':
@@ -379,7 +435,9 @@ const QuadrantBox: React.FC<{
 
   return (
     <div className="paper-card rounded-[14px] overflow-hidden bg-white dark:bg-[#27221E]">
-      <div className={`px-3.5 py-2 flex items-center justify-between ${getHeaderColor()}`}>
+      <div
+        className={`px-3.5 py-2 flex items-center justify-between ${getHeaderColor()}`}
+      >
         <span className="text-[13px] font-semibold">{title}</span>
         <span className="text-[11px] font-medium opacity-80 inline-flex items-center gap-1">
           {badge} · <AnimatedNumber value={tasks.length} />
@@ -390,10 +448,25 @@ const QuadrantBox: React.FC<{
           tasks.map((task) => (
             <div
               key={task.id}
-              onClick={() => onToggle(task.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  event.key === 'Enter'
+                )
+                  onEdit?.(task);
+              }}
+              onClick={() => onEdit?.(task)}
               className="px-2 py-1.5 rounded-lg hover:bg-[#F5F1E8] dark:hover:bg-[#322C26] flex items-center gap-2 cursor-pointer transition-colors text-[13px]"
             >
-              <span
+              <button
+                type="button"
+                aria-label={task.status === 'completed' ? '撤销完成' : '完成'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggle(task.id);
+                }}
                 className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
                   task.status === 'completed'
                     ? 'bg-[#6C8271] border-[#6C8271] text-white text-[10px]'
@@ -401,10 +474,12 @@ const QuadrantBox: React.FC<{
                 }`}
               >
                 {task.status === 'completed' && '✓'}
-              </span>
+              </button>
               <span
                 className={`truncate ${
-                  task.status === 'completed' ? 'line-through text-[#786E64]' : ''
+                  task.status === 'completed'
+                    ? 'line-through text-[#786E64]'
+                    : ''
                 }`}
               >
                 {task.title}
@@ -412,7 +487,9 @@ const QuadrantBox: React.FC<{
             </div>
           ))
         ) : (
-          <div className="py-2 text-center text-[11.5px] text-[#786E64]/70">暂无任务</div>
+          <div className="py-2 text-center text-[11.5px] text-[#786E64]/70">
+            暂无任务
+          </div>
         )}
       </div>
     </div>

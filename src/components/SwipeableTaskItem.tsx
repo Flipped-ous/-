@@ -1,21 +1,36 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { Task } from '../types/index.ts';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from 'react';
+import { motion } from 'motion/react';
+import type { Task, DueCategory } from '../types/index.ts';
+import { useMotion } from '../motion/MotionProvider.tsx';
+import {
+  gestureIntent,
+  releaseAction,
+  type GestureIntent,
+} from '../utils/gesture.ts';
+import { formatDueLabel, getDueCategory } from '../utils/taskLogic.ts';
 
 interface SwipeableTaskItemProps {
   task: Task;
   index: number;
+  group?: string;
   isLast?: boolean;
   variant?: 'card' | 'row';
   showDetails?: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onEdit?: (task: Task) => void;
-  onReorder?: (dragIndex: number, hoverIndex: number) => void;
+  onReorder?: (id: string, targetId: string, category?: DueCategory) => void;
 }
-
 export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   task,
   index,
+  group = 'tasks',
   isLast = false,
   variant = 'row',
   showDetails = false,
@@ -24,225 +39,230 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   onEdit,
   onReorder,
 }) => {
+  const config = useMotion();
   const [offsetX, setOffsetX] = useState(0);
+  const [dragY, setDragY] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isAnimatingOut, setIsAnimatingOut] = useState(false);
   const [isSnappingBack, setIsSnappingBack] = useState(false);
-
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isPointerDownRef = useRef(false);
-  const startPosRef = useRef<{ x: number; y: number; time: number }>({ x: 0, y: 0, time: 0 });
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const gestureIntentRef = useRef<'idle' | 'horizontal' | 'vertical' | 'reorder'>('idle');
-  const hasCrossedThresholdRef = useRef(false);
   const [isCompletingLocally, setIsCompletingLocally] = useState(false);
-
+  const containerRef = useRef<HTMLDivElement>(null);
+  const intent = useRef<GestureIntent>('idle');
+  const start = useRef({ x: 0, y: 0, time: 0, grab: 0 });
+  const point = useRef({ x: 0, y: 0 });
+  const pointer = useRef<number | null>(null);
+  const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const thresholdCrossed = useRef(false);
+  const lastHover = useRef('');
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const callbacks = useRef({
+    task,
+    onToggle,
+    onDelete,
+    onEdit,
+    onReorder,
+    group,
+  });
+  callbacks.current = { task, onToggle, onDelete, onEdit, onReorder, group };
   const isCompleted = task.status === 'completed';
+  const category = getDueCategory(task);
+  const badgeLabel = ['����', '����', '������', '��ʱ', '�����'].includes(
+    task.badgeLabel || '',
+  )
+    ? isCompleted
+      ? '�����'
+      : category === 'overdue'
+        ? '����'
+        : category === 'none'
+          ? '��ʱ'
+          : undefined
+    : task.badgeLabel;
   const isEffectivelyCompleted = isCompleted || isCompletingLocally;
-
-  // Keep ref in sync
-  currentOffsetRef.current = offsetX;
-
-  // Gentle haptic feedback helper
-  const triggerHaptic = useCallback((duration = 15) => {
-    try {
-      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+  const triggerHaptic = useCallback(
+    (duration = 15) => {
+      if (
+        config.durations.tapFeedback &&
+        typeof navigator !== 'undefined' &&
+        navigator.vibrate
+      )
         navigator.vibrate(duration);
-      }
-    } catch {
-      // ignore in environments without vibration hardware
-    }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  // POINTER DOWN: Start gesture tracking only on primary click/touch
-  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Only primary mouse button (button === 0) or touch/pen
-    if (e.button !== 0) return;
-    if (isAnimatingOut) return;
-
-    isPointerDownRef.current = true;
-    startPosRef.current = { x: e.clientX, y: e.clientY, time: Date.now() };
-    gestureIntentRef.current = 'idle';
-    hasCrossedThresholdRef.current = false;
-    setIsSnappingBack(false);
-
-    // Start 450ms long-press timer for reorder mode
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-    }
-    longPressTimerRef.current = setTimeout(() => {
-      // If pointer is still held down and movement was under 10px, activate reorder mode
-      if (isPointerDownRef.current && gestureIntentRef.current === 'idle') {
-        gestureIntentRef.current = 'reorder';
-        setIsDragging(true);
-        triggerHaptic(30);
-      }
-    }, 450);
-
-    // Global window listeners to ensure smooth continuous 1:1 tracking
-    const handleGlobalPointerMove = (moveEvt: PointerEvent) => {
-      if (!isPointerDownRef.current) return;
-
-      const deltaX = moveEvt.clientX - startPosRef.current.x;
-      const deltaY = moveEvt.clientY - startPosRef.current.y;
-      const absX = Math.abs(deltaX);
-      const absY = Math.abs(deltaY);
-      const dist = Math.hypot(deltaX, deltaY);
-
-      // Cancel long press if movement exceeds 9px before 450ms fires
-      if (dist > 9 && gestureIntentRef.current !== 'reorder') {
-        if (longPressTimerRef.current) {
-          clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
-        }
-      }
-
-      // Determine gesture direction on initial movement
-      if (gestureIntentRef.current === 'idle' && dist > 8) {
-        if (absY > absX) {
-          // Vertical movement priority -> allow native page scroll
-          gestureIntentRef.current = 'vertical';
-        } else {
-          // Horizontal movement priority -> enter horizontal swipe
-          gestureIntentRef.current = 'horizontal';
-          setIsSwiping(true);
-        }
-      }
-
-      // 1. REORDER MODE
-      if (gestureIntentRef.current === 'reorder') {
-        if (onReorder) {
-          const el = document.elementFromPoint(moveEvt.clientX, moveEvt.clientY);
-          const targetItem = el?.closest('[data-task-index]') as HTMLElement | null;
-          if (targetItem && targetItem.dataset.taskIndex !== undefined) {
-            const hoverIdx = parseInt(targetItem.dataset.taskIndex, 10);
-            if (!isNaN(hoverIdx) && hoverIdx !== index) {
-              triggerHaptic(12);
-              onReorder(index, hoverIdx);
-            }
-          }
-        }
-        return;
-      }
-
-      // 2. HORIZONTAL SWIPE: Direct continuous 1:1 proportional tracking
-      if (gestureIntentRef.current === 'horizontal') {
-        const cardWidth = containerRef.current?.offsetWidth || 340;
-        const threshold = cardWidth * 0.45;
-
-        // Directly follow pointer (no CSS transitions active while dragging)
-        setOffsetX(deltaX);
-
-        // Threshold crossing haptic feedback (trigger only once per threshold transition)
-        const isBeyondThreshold = absX >= threshold;
-        if (isBeyondThreshold && !hasCrossedThresholdRef.current) {
-          triggerHaptic(deltaX > 0 ? 15 : 20);
-          hasCrossedThresholdRef.current = true;
-        } else if (!isBeyondThreshold && hasCrossedThresholdRef.current) {
-          hasCrossedThresholdRef.current = false;
-        }
-      }
-    };
-
-    const handleGlobalPointerUp = (upEvt: PointerEvent) => {
-      window.removeEventListener('pointermove', handleGlobalPointerMove);
-      window.removeEventListener('pointerup', handleGlobalPointerUp);
-      window.removeEventListener('pointercancel', handleGlobalPointerUp);
-
-      if (!isPointerDownRef.current) return;
-      isPointerDownRef.current = false;
-
-      // Clear long-press timer if still pending
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-
-      // Reorder mode release
-      if (gestureIntentRef.current === 'reorder') {
-        setIsDragging(false);
-        gestureIntentRef.current = 'idle';
-        return;
-      }
-
-      // Click to edit recognition (movement < 6px and duration < 400ms)
-      if (gestureIntentRef.current === 'idle') {
-        const elapsed = Date.now() - startPosRef.current.time;
-        const totalDist = Math.hypot(
-          upEvt.clientX - startPosRef.current.x,
-          upEvt.clientY - startPosRef.current.y
-        );
-        if (totalDist < 6 && elapsed < 400) {
-          onEdit?.(task);
-        }
-        return;
-      }
-
-      // Horizontal swipe release
-      if (gestureIntentRef.current === 'horizontal') {
-        const cardWidth = containerRef.current?.offsetWidth || 340;
-        const threshold = cardWidth * 0.45;
-        const finalX = currentOffsetRef.current;
-
-        if (finalX >= threshold) {
-          // Confirmed RIGHT SWIPE (Complete) - release beyond 45%
-          setIsAnimatingOut(true);
-          triggerHaptic(20);
-          setOffsetX(cardWidth + 24);
-
-          setTimeout(() => {
-            onToggle();
-            setOffsetX(0);
-            setIsSwiping(false);
-            setIsAnimatingOut(false);
-            hasCrossedThresholdRef.current = false;
-          }, 300);
-        } else if (finalX <= -threshold) {
-          // Confirmed LEFT SWIPE (Delete) - release beyond 45%
-          setIsAnimatingOut(true);
-          triggerHaptic(25);
-          setOffsetX(-cardWidth - 24);
-
-          setTimeout(() => {
-            onDelete();
-            setOffsetX(0);
-            setIsSwiping(false);
-            setIsAnimatingOut(false);
-            hasCrossedThresholdRef.current = false;
-          }, 300);
-        } else {
-          // Cancelled (released below 45% or dragged back before release)
-          // Smoothly return card to x = 0 (240ms duration)
-          setIsSnappingBack(true);
-          setOffsetX(0);
-          hasCrossedThresholdRef.current = false;
-
-          setTimeout(() => {
-            setIsSwiping(false);
-            setIsSnappingBack(false);
-          }, 250);
-        }
-      }
-
-      gestureIntentRef.current = 'idle';
-    };
-
-    window.addEventListener('pointermove', handleGlobalPointerMove, { passive: true });
-    window.addEventListener('pointerup', handleGlobalPointerUp, { passive: true });
-    window.addEventListener('pointercancel', handleGlobalPointerUp, { passive: true });
+    },
+    [config],
+  );
+  const clearLongPress = () => {
+    if (longPress.current) clearTimeout(longPress.current);
+    longPress.current = null;
   };
 
+  useEffect(() => {
+    mounted.current = true;
+    const preventScroll = (event: TouchEvent) => {
+      if (intent.current === 'reorder' || intent.current === 'horizontal')
+        event.preventDefault();
+    };
+    const node = containerRef.current;
+    node?.addEventListener('touchmove', preventScroll, { passive: false });
+    return () => {
+      mounted.current = false;
+      clearLongPress();
+      node?.removeEventListener('touchmove', preventScroll);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (intent.current === 'reorder' && containerRef.current) {
+      const next =
+        point.current.y -
+        containerRef.current.getBoundingClientRect().top -
+        start.current.grab;
+      if (Math.abs(next - dragY) > 0.5) setDragY(next);
+    }
+  });
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (
+      event.button !== 0 ||
+      !event.isPrimary ||
+      busy.current ||
+      pointer.current !== null
+    )
+      return;
+    pointer.current = event.pointerId;
+    start.current = {
+      x: event.clientX,
+      y: event.clientY,
+      time: Date.now(),
+      grab: event.clientY - event.currentTarget.getBoundingClientRect().top,
+    };
+    point.current = { x: event.clientX, y: event.clientY };
+    intent.current = 'idle';
+    thresholdCrossed.current = false;
+    lastHover.current = '';
+    setIsSnappingBack(false);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (onReorder)
+      longPress.current = setTimeout(() => {
+        if (pointer.current !== null && intent.current === 'idle') {
+          intent.current = 'reorder';
+          setIsDragging(true);
+          triggerHaptic(25);
+        }
+      }, 450);
+  };
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pointer.current !== event.pointerId) return;
+    point.current = { x: event.clientX, y: event.clientY };
+    const dx = event.clientX - start.current.x,
+      dy = event.clientY - start.current.y;
+    if (Math.hypot(dx, dy) > 9 && intent.current !== 'reorder')
+      clearLongPress();
+    if (intent.current === 'idle') intent.current = gestureIntent(dx, dy);
+    if (intent.current === 'reorder') {
+      setDragY(
+        event.clientY -
+          (containerRef.current?.getBoundingClientRect().top || 0) -
+          start.current.grab,
+      );
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>('[data-task-id]');
+      if (
+        target?.dataset.taskGroup === callbacks.current.group &&
+        target.dataset.taskId !== task.id &&
+        target.dataset.taskId !== lastHover.current
+      ) {
+        lastHover.current = target.dataset.taskId!;
+        callbacks.current.onReorder?.(task.id, target.dataset.taskId!);
+      }
+    } else if (intent.current === 'horizontal') {
+      setIsSwiping(true);
+      setOffsetX(dx);
+      const crossed =
+        Math.abs(dx) >= (containerRef.current?.offsetWidth || 340) * 0.45;
+      if (crossed && !thresholdCrossed.current) triggerHaptic();
+      thresholdCrossed.current = crossed;
+    }
+  };
+  const finishAction = (action: 'complete' | 'delete') => {
+    if (busy.current) return;
+    busy.current = true;
+    setIsAnimatingOut(true);
+    triggerHaptic(20);
+    setOffsetX(
+      config.allowScaleEffects
+        ? (action === 'complete' ? 1 : -1) *
+            ((containerRef.current?.offsetWidth || 340) + 24)
+        : 0,
+    );
+    const callback =
+      action === 'complete'
+        ? callbacks.current.onToggle
+        : callbacks.current.onDelete;
+    setTimeout(() => {
+      callback();
+      busy.current = false;
+      if (mounted.current) {
+        setOffsetX(0);
+        setIsAnimatingOut(false);
+        setIsSwiping(false);
+      }
+    }, config.durations.confirmedSwipe);
+  };
+  const handlePointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (pointer.current !== event.pointerId) return;
+    clearLongPress();
+    pointer.current = null;
+    const mode = intent.current;
+    const cancelled =
+      event.type === 'pointercancel' || event.type === 'lostpointercapture';
+    intent.current = 'idle';
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    if (mode === 'reorder') {
+      if (!cancelled) {
+        const target = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest<HTMLElement>('[data-drop-category]');
+        const category = target?.dataset.dropCategory as
+          | DueCategory
+          | undefined;
+        const targetTask = document
+          .elementFromPoint(event.clientX, event.clientY)
+          ?.closest<HTMLElement>('[data-task-id]');
+        if (category && category !== getDueCategory(callbacks.current.task))
+          callbacks.current.onReorder?.(
+            task.id,
+            targetTask?.dataset.taskId || task.id,
+            category,
+          );
+      }
+      setIsDragging(false);
+      setDragY(0);
+      return;
+    }
+    const dx = event.clientX - start.current.x;
+    const action = releaseAction(
+      mode,
+      dx,
+      containerRef.current?.offsetWidth || 340,
+      cancelled,
+    );
+    if (action !== 'cancel') {
+      finishAction(action);
+      return;
+    }
+    setIsSnappingBack(true);
+    setOffsetX(0);
+    setIsSwiping(false);
+    if (
+      !cancelled &&
+      mode === 'idle' &&
+      Math.hypot(dx, event.clientY - start.current.y) < 6 &&
+      Date.now() - start.current.time < 400
+    )
+      callbacks.current.onEdit?.(callbacks.current.task);
+  };
   // Calculate visual feedback linked directly to swipe progress
   const cardWidth = containerRef.current?.offsetWidth || 340;
   const threshold = cardWidth * 0.45;
@@ -252,15 +272,11 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
 
   // Background opacity begins gently around 12%, becoming clear by 40%
   const bgOpacity =
-    rawProgress < 0.12
-      ? 0
-      : Math.min(0.95, (rawProgress - 0.12) / 0.75);
+    rawProgress < 0.12 ? 0 : Math.min(0.95, (rawProgress - 0.12) / 0.75);
 
   // Icon opacity begins appearing around 20%, fully visible by 45%
   const iconOpacity =
-    rawProgress < 0.2
-      ? 0
-      : Math.min(1, (rawProgress - 0.2) / 0.65);
+    rawProgress < 0.2 ? 0 : Math.min(1, (rawProgress - 0.2) / 0.65);
 
   // Icon scale: 0.75 -> 1.05
   const iconScale = 0.75 + Math.min(1, rawProgress) * 0.3;
@@ -290,26 +306,56 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
       return 'none';
     }
     if (isAnimatingOut) {
-      return 'transform 300ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 280ms ease-out';
+      return `transform ${config.durations.confirmedSwipe}ms ${config.easings.decelerate}, opacity ${config.durations.confirmedSwipe}ms ease-out`;
     }
     if (isSnappingBack) {
-      return 'transform 250ms cubic-bezier(0.25, 1, 0.5, 1)';
+      return `transform ${config.durations.cancelSwipe}ms ${config.easings.standard}`;
     }
-    return 'transform 250ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 250ms ease';
+    return `transform ${config.durations.listReflow}ms ${config.easings.spring}, box-shadow ${config.durations.smallTransition}ms ease`;
   };
 
   return (
-    <div
+    <motion.div
+      layout={isDragging || !config.allowScaleEffects ? false : 'position'}
+      transition={{
+        layout: {
+          type: 'spring',
+          stiffness: 380,
+          damping: 34,
+          duration: config.durations.listReflow / 1000,
+        },
+      }}
       ref={containerRef}
       data-task-index={index}
+      data-task-id={task.id}
+      data-task-group={group}
+      role="listitem"
+      tabIndex={0}
+      aria-label={task.title}
+      onKeyDown={(event) => {
+        if (
+          event.target === event.currentTarget &&
+          (event.key === 'Enter' || event.key === ' ')
+        ) {
+          event.preventDefault();
+          onEdit?.(task);
+        }
+      }}
       onPointerDown={handlePointerDown}
-      style={{ touchAction: 'pan-y' }}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onLostPointerCapture={handlePointerUp}
+      style={{
+        touchAction: 'pan-y',
+        pointerEvents: isDragging ? 'none' : undefined,
+      }}
       className={`relative overflow-hidden select-none ${
         variant === 'card'
           ? 'paper-card rounded-[14px] mb-2.5 transition-shadow'
           : !isLast
-          ? 'border-b border-[#746B61]/8 dark:border-[#5E544A]/15'
-          : ''
+            ? 'border-b border-[#746B61]/8 dark:border-[#5E544A]/15'
+            : ''
       } ${isDragging ? 'z-30' : 'z-10'}`}
     >
       {/* BACKGROUND UNDERLAY: Right Swipe Complete (Pale Sage Green) */}
@@ -334,7 +380,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
             {isCompleted ? 'undo' : 'check_circle'}
           </span>
           <span className="text-[13px] tracking-wide">
-            {isCompleted ? '撤销完成' : '完成'}
+            {isCompleted ? '�������' : '���'}
           </span>
         </div>
       </div>
@@ -357,7 +403,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
             transformOrigin: 'right center',
           }}
         >
-          <span className="text-[13px] tracking-wide">删除</span>
+          <span className="text-[13px] tracking-wide">ɾ��</span>
           <span className="material-symbols-outlined text-[20px] leading-none">
             delete
           </span>
@@ -371,7 +417,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
         } ${isEffectivelyCompleted ? 'opacity-70 is-completed' : ''}`}
         style={{
           transform: isDragging
-            ? 'scale(1.02)'
+            ? `translateY(${dragY}px) scale(${config.allowScaleEffects ? 1.02 : 1})`
             : `translateX(${offsetX}px)`,
           transition: getCardTransition(),
           boxShadow: isDragging
@@ -387,20 +433,22 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            if (isCompleted) {
-              triggerHaptic(12);
-              onToggle();
-            } else {
-              triggerHaptic(16);
-              setIsCompletingLocally(true);
-              setTimeout(() => {
-                onToggle();
-                setIsCompletingLocally(false);
-              }, 260);
-            }
+            if (busy.current) return;
+            busy.current = true;
+            triggerHaptic(12);
+            if (!isCompleted) setIsCompletingLocally(true);
+            const callback = callbacks.current.onToggle;
+            setTimeout(
+              () => {
+                callback();
+                busy.current = false;
+                if (mounted.current) setIsCompletingLocally(false);
+              },
+              isCompleted ? 0 : config.durations.smallTransition,
+            );
           }}
-          aria-label={isEffectivelyCompleted ? '撤销完成' : '完成'}
-          className={`w-[19px] h-[19px] mt-0.5 rounded-[5px] border-[1.5px] flex items-center justify-center shrink-0 transition-all duration-200 cursor-pointer ${
+          aria-label={isEffectivelyCompleted ? '�������' : '���'}
+          className={`task-checkbox relative w-[19px] h-[19px] mt-0.5 rounded-[5px] border-[1.5px] flex items-center justify-center shrink-0 transition-all duration-200 cursor-pointer ${
             isCompletingLocally ? 'scale-90' : 'active:scale-90'
           } ${
             isEffectivelyCompleted
@@ -439,13 +487,13 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
               {task.title}
             </h4>
 
-            {task.badgeLabel && (
+            {badgeLabel && (
               <span
                 className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${getBadgeStyle(
-                  task.badgeType
+                  task.badgeType,
                 )}`}
               >
-                {task.badgeLabel}
+                {badgeLabel}
               </span>
             )}
           </div>
@@ -461,7 +509,9 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
           {!showDetails && task.tags && task.tags.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 mt-1 text-[11px]">
               {task.tags
-                ?.filter((tag) => tag !== task.badgeLabel && tag !== `#${task.badgeLabel}`)
+                ?.filter(
+                  (tag) => tag !== task.badgeLabel && tag !== `#${badgeLabel}`,
+                )
                 .map((tag) => (
                   <span
                     key={tag}
@@ -474,18 +524,20 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
           )}
 
           {/* Time & Project footer for card view */}
-          {showDetails && (task.dueTime || task.project) && (
+          {(task.dueAt || task.project) && (
             <div className="flex items-center gap-2 mt-2 text-[11.5px] text-[#786E64] dark:text-[#A89E92]">
-              {task.dueTime && (
+              {task.dueAt && (
                 <span className="flex items-center gap-1">
                   <span className="material-symbols-outlined text-[13px] leading-none">
                     schedule
                   </span>
-                  {task.dueTime}
+                  {formatDueLabel(task)}
                 </span>
               )}
-              {task.dueTime && task.project && (
-                <span className="text-[#D3C9BD] dark:text-[#5E544A] text-[10px]">·</span>
+              {task.dueAt && task.project && (
+                <span className="text-[#D3C9BD] dark:text-[#5E544A] text-[10px]">
+                  ��
+                </span>
               )}
               {task.project && (
                 <span className="flex items-center gap-1">
@@ -499,6 +551,6 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

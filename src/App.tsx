@@ -3,8 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import type { Task, Project, ReviewEntry, SyncDevice, AppSettings, BackupData } from './types/index.ts';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import type {
+  Task,
+  Project,
+  ReviewEntry,
+  SyncDevice,
+  AppSettings,
+  BackupData,
+} from './types/index.ts';
 import {
   initialTasks,
   initialProjects,
@@ -14,23 +21,21 @@ import {
 } from './data/initialData.ts';
 import {
   getDueCategory,
-  toggleTask,
-  deleteTask,
-  restoreTask,
-  moveTask,
-  changeTaskCategory,
   calculateReviewStats,
   mergeEntities,
+  createBackup,
+  validateBackupData,
 } from './utils/taskLogic.ts';
+import { loadStorageData, saveStorageData } from './services/storage.ts';
+import { migrateStorageData } from './services/migration.ts';
+import { useTasks } from './hooks/useTasks.ts';
+import { MotionProvider } from './motion/MotionProvider.tsx';
+import { AnimatePresence } from 'motion/react';
+import { PageTransition } from './motion/PageTransition.tsx';
 import {
-  loadStorageData,
-  saveTasksToStorage,
-  saveProjectsToStorage,
-  saveReviewsToStorage,
-  saveSettingsToStorage,
-  saveDevicesToStorage,
-} from './services/storage.ts';
-import { BottomNavigation, type NavTabId } from './components/BottomNavigation.tsx';
+  BottomNavigation,
+  type NavTabId,
+} from './components/BottomNavigation.tsx';
 import { AddTaskSheet } from './components/AddTaskSheet.tsx';
 import { Toast } from './components/Toast.tsx';
 import { UndoSnackbar } from './components/UndoSnackbar.tsx';
@@ -44,7 +49,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTabId>('today');
 
   // Single Source of Truth for all tasks
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const {
+    tasks,
+    setTasks,
+    saveTask,
+    toggle,
+    remove,
+    undo,
+    dismiss,
+    move,
+    deletedTaskBackup,
+  } = useTasks(initialTasks);
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [reviews, setReviews] = useState<ReviewEntry[]>(initialReviews);
   const [devices, setDevices] = useState<SyncDevice[]>(initialDevices);
@@ -55,49 +70,60 @@ export default function App() {
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Undo deletion state
-  const [deletedTaskBackup, setDeletedTaskBackup] = useState<{
-    task: Task;
-    index: number;
-  } | null>(null);
-  const [showUndoSnackbar, setShowUndoSnackbar] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [storageError, setStorageError] = useState('');
+  const [now, setNow] = useState(() => new Date());
+  const [reviewPeriod, setReviewPeriod] = useState<'week' | 'month'>('week');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize and load persistent data from IndexedDB
   useEffect(() => {
-    loadStorageData().then((data) => {
-      if (data) {
-        if (data.tasks && data.tasks.length > 0) setTasks(data.tasks);
-        if (data.projects && data.projects.length > 0) setProjects(data.projects);
-        if (data.reviews && data.reviews.length > 0) setReviews(data.reviews);
-        if (data.devices && data.devices.length > 0) setDevices(data.devices);
-        if (data.settings) setSettings(data.settings);
-      } else {
-        // First run: save initial seed data
-        saveTasksToStorage(initialTasks);
-        saveProjectsToStorage(initialProjects);
-        saveReviewsToStorage(initialReviews);
-        saveSettingsToStorage(initialSettings);
-        saveDevicesToStorage(initialDevices);
-      }
-    });
+    let active = true;
+    loadStorageData()
+      .then((data) => {
+        if (!active) return;
+        if (data) {
+          setTasks(data.tasks);
+          setProjects(data.projects);
+          setReviews(data.reviews);
+          setDevices(data.devices);
+          setSettings({ ...initialSettings, ...data.settings });
+        }
+        setHydrated(true);
+      })
+      .catch((error) => {
+        if (active) setStorageError(error.message || '�������ݶ�ȡʧ��');
+      });
+    return () => {
+      active = false;
+    };
+  }, [setTasks]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveStorageData({
+      schemaVersion: 2,
+      tasks,
+      projects,
+      reviews,
+      devices,
+      settings,
+    })
+      .then(() => setStorageError(''))
+      .catch((error) => setStorageError(error.message));
+  }, [hydrated, tasks, projects, reviews, devices, settings]);
+
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    const timer = setInterval(tick, 30000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', tick);
+      document.removeEventListener('visibilitychange', tick);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
   }, []);
-
-  // Auto-save changes to IndexedDB
-  useEffect(() => {
-    saveTasksToStorage(tasks);
-  }, [tasks]);
-
-  useEffect(() => {
-    saveProjectsToStorage(projects);
-  }, [projects]);
-
-  useEffect(() => {
-    saveReviewsToStorage(reviews);
-  }, [reviews]);
-
-  useEffect(() => {
-    saveSettingsToStorage(settings);
-  }, [settings]);
 
   // Apply dark mode class
   useEffect(() => {
@@ -111,87 +137,29 @@ export default function App() {
   // Toast notification helper
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => {
       setToastMessage(null);
     }, 2400);
   };
 
   // Derive Today tasks dynamically from unified tasks
   const todayTasks = useMemo(() => {
-    return tasks.filter((t) => getDueCategory(t) === 'today');
-  }, [tasks]);
+    return tasks.filter((t) => getDueCategory(t, now) === 'today');
+  }, [tasks, now]);
 
-  // Toggle task in single tasks array
-  const handleToggleTask = (taskId: string) => {
-    const target = tasks.find((t) => t.id === taskId);
-    const wasPending = target?.status === 'pending';
-    setTasks((prev) => toggleTask(prev, taskId));
-    if (wasPending) {
-      showToast('已完成 1 项任务');
-    }
+  const handleToggleTask = (id: string) => {
+    toggle(id);
   };
-
-  // Delete task with Undo tolerance
-  const handleDeleteTask = (taskId: string) => {
-    const { updatedTasks, deletedTask, deletedIndex } = deleteTask(tasks, taskId);
-    if (deletedTask) {
-      setDeletedTaskBackup({ task: deletedTask, index: deletedIndex });
-      setTasks(updatedTasks);
-      setShowUndoSnackbar(true);
-    }
+  const handleDeleteTask = (id: string) => {
+    remove(id);
   };
-
-  // Undo delete
   const handleUndoDelete = () => {
-    if (deletedTaskBackup) {
-      setTasks((prev) => restoreTask(prev, deletedTaskBackup.task, deletedTaskBackup.index));
-      showToast(`已恢复待办「${deletedTaskBackup.task.title}」`);
-      setDeletedTaskBackup(null);
-      setShowUndoSnackbar(false);
-    }
+    undo();
   };
-
-  // Add or Edit Task (Single insertion / modification)
-  const handleSaveTask = (taskData: Partial<Task>) => {
-    const nowIso = new Date().toISOString();
-
-    if (taskData.id) {
-      // Editing existing task
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskData.id
-            ? {
-                ...t,
-                ...taskData,
-                updatedAt: nowIso,
-              }
-            : t
-        )
-      );
-      showToast(`已更新「${taskData.title}」`);
-    } else {
-      // Adding new task
-      const newTask: Task = {
-        id: `task-${Date.now()}`,
-        title: taskData.title || '',
-        note: taskData.note,
-        status: 'pending',
-        priority: taskData.priority || 'normal',
-        dueAt: taskData.dueAt,
-        dueTime: taskData.dueTime,
-        dueLabel: taskData.dueLabel || '今天',
-        projectId: taskData.projectId,
-        project: taskData.project || '今日有序 Android 客户端',
-        badgeLabel: taskData.badgeLabel,
-        badgeType: taskData.badgeType,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-      };
-
-      setTasks((prev) => [newTask, ...prev]);
-      showToast('已添入待办清单');
-    }
-
+  const handleSaveTask = (value: Partial<Task>) => {
+    saveTask(value);
+    showToast(value.id ? '�ѱ����޸�' : '����������嵥');
     setTaskToEdit(null);
     setIsAddTaskOpen(false);
   };
@@ -208,45 +176,21 @@ export default function App() {
     setIsAddTaskOpen(true);
   };
 
-  // Reorder tasks inside a section (in TasksView)
   const handleReorderTasks = (
-    section: 'overdue' | 'today' | 'future' | 'none',
-    fromIdx: number,
-    toIdx: number
-  ) => {
-    setTasks((prev) => {
-      const sectionTasks = prev.filter((t) => getDueCategory(t) === section);
-      const otherTasks = prev.filter((t) => getDueCategory(t) !== section);
-      if (fromIdx < 0 || fromIdx >= sectionTasks.length || toIdx < 0 || toIdx >= sectionTasks.length) {
-        return prev;
-      }
-      const updatedSection = moveTask(sectionTasks, fromIdx, toIdx);
-      return [...updatedSection, ...otherTasks];
-    });
-  };
-
-  // Reorder tasks in TodayView
-  const handleReorderTodayTasks = (fromIdx: number, toIdx: number) => {
-    setTasks((prev) => {
-      const currentToday = prev.filter((t) => getDueCategory(t) === 'today');
-      const otherTasks = prev.filter((t) => getDueCategory(t) !== 'today');
-      if (fromIdx < 0 || fromIdx >= currentToday.length || toIdx < 0 || toIdx >= currentToday.length) {
-        return prev;
-      }
-      const reorderedToday = moveTask(currentToday, fromIdx, toIdx);
-      return [...reorderedToday, ...otherTasks];
-    });
-  };
+    id: string,
+    targetId: string,
+    category?: import('./types/index.ts').DueCategory,
+  ) => move(id, targetId, category);
 
   // Add Project
   const handleAddProject = (newProj: Partial<Project>) => {
     const nowIso = new Date().toISOString();
     const proj: Project = {
-      id: `proj-${Date.now()}`,
-      name: newProj.name || '新建项目',
+      id: crypto.randomUUID(),
+      name: newProj.name || '�½���Ŀ',
       description: newProj.description || '',
       status: 'active',
-      statusLabel: '● 进行中',
+      statusLabel: '�� ������',
       statusType: 'sage',
       docCount: 0,
       docs: [],
@@ -254,27 +198,27 @@ export default function App() {
       updatedAt: nowIso,
     };
     setProjects((prev) => [proj, ...prev]);
-    showToast('新项目创建成功');
+    showToast('����Ŀ�����ɹ�');
   };
 
   // Add Review
   const handleAddReview = (newEntry: Partial<ReviewEntry>) => {
     const nowIso = new Date().toISOString();
     const entry: ReviewEntry = {
-      id: `rev-${Date.now()}`,
-      date: newEntry.date || '今日',
-      subDate: newEntry.subDate || '今日随感',
-      time: newEntry.time || '刚刚',
-      wordCount: newEntry.wordCount || 100,
-      type: 'day',
-      title: newEntry.title || '今日随感',
+      id: crypto.randomUUID(),
+      date: new Date().toLocaleDateString('zh-CN'),
+      subDate: newEntry.subDate || '�������',
+      time: newEntry.time || '�ո�',
+      wordCount: [...(newEntry.content || '')].length,
+      type: newEntry.type || 'day',
+      title: newEntry.title || '�������',
       content: newEntry.content || '',
-      moods: newEntry.moods || ['平静'],
+      moods: newEntry.moods || ['ƽ��'],
       createdAt: nowIso,
       updatedAt: nowIso,
     };
     setReviews((prev) => [entry, ...prev]);
-    showToast('复盘随感已收录于墨迹');
+    showToast('�����������¼��ī��');
   };
 
   // Trigger LAN Sync
@@ -282,35 +226,42 @@ export default function App() {
     setDevices((prev) =>
       prev.map((d) => ({
         ...d,
-        lastSync: '刚刚',
+        lastSync: '�ո�',
         pingMs: Math.floor(Math.random() * 4) + 2,
-      }))
+      })),
     );
   };
 
   // Export Data JSON
   const handleExportData = () => {
-    const backup: BackupData = {
-      schemaVersion: 1,
-      exportedAt: new Date().toISOString(),
-      tasks,
-      projects,
-      reviews,
-      settings,
-    };
+    const backup = createBackup(tasks, projects, reviews, settings);
 
-    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: 'application/json',
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `jinri-youxu-backup-${Date.now()}.json`;
     a.click();
-    URL.revokeObjectURL(url);
-    showToast('已导出完整本地备份 (.json)');
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    showToast('�ѵ����������ر��� (.json)');
   };
 
   // Import Data JSON
-  const handleImportBackup = (incoming: BackupData, mode: 'overwrite' | 'merge') => {
+  const handleImportBackup = (
+    incoming: BackupData,
+    mode: 'overwrite' | 'merge',
+  ) => {
+    const validation = validateBackupData(incoming);
+    if (!validation.valid) throw new Error(validation.error);
+    const migrated = migrateStorageData(incoming);
+    incoming = {
+      ...incoming,
+      ...migrated,
+      settings: migrated.settings || undefined,
+    };
+    dismiss();
     if (mode === 'overwrite') {
       setTasks(incoming.tasks);
       setProjects(incoming.projects);
@@ -323,164 +274,212 @@ export default function App() {
       setTasks((prev) => mergeEntities(prev, incoming.tasks));
       setProjects((prev) => mergeEntities(prev, incoming.projects));
       setReviews((prev) => mergeEntities(prev, incoming.reviews));
+      if (incoming.settings)
+        setSettings((previous) => ({ ...previous, ...incoming.settings }));
     }
   };
 
   // Real review stats calculated purely from tasks
   const reviewStats = useMemo(() => {
-    return calculateReviewStats(tasks);
-  }, [tasks]);
+    return calculateReviewStats(tasks, now, reviewPeriod);
+  }, [tasks, now, reviewPeriod]);
 
   const pendingCountTotal = tasks.filter((t) => t.status === 'pending').length;
 
-  return (
-    <div className="min-h-screen bg-[#F5F1E8] dark:bg-[#1D1916] text-[#28231D] dark:text-[#EDE6DE] relative flex flex-col font-sans transition-colors duration-200">
-      {/* 
-        Extreme bottom-right corner subtle sage tint (as required: 
-        "只允许在页面极右下角的非常小区域加入一丝极淡鼠尾草绿，约占5%~10%，非常柔和")
-      */}
-      <div className="sage-ambient-corner" />
-
-      {/* Subtle stationery watermark line drawing (bamboo & gentle gridlines, opacity 0.035) */}
-      <svg
-        className="pointer-events-none fixed right-2 top-20 w-64 h-80 text-[#746B61] opacity-[0.035] dark:opacity-[0.02] z-0 select-none"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="0.8"
-        viewBox="0 0 120 150"
+  if (!hydrated)
+    return (
+      <div
+        className="min-h-screen bg-[#F5F1E8] text-[#786E64] flex flex-col items-center justify-center gap-3"
+        role="status"
       >
-        <path
-          d="M70,140 C65,95 72,50 68,10 M68,10 C72,25 88,32 102,28 M68,10 C62,30 52,58 48,100 M62,50 C76,46 88,52 94,62 M55,75 C70,70 82,78 86,88"
-          strokeLinecap="round"
+        {storageError || '���ڶ�ȡ�������ݡ�'}
+        {storageError && (
+          <button onClick={() => location.reload()}>���¶�ȡ</button>
+        )}
+      </div>
+    );
+
+  return (
+    <MotionProvider settings={settings}>
+      <div className="app-root min-h-screen bg-[#F5F1E8] dark:bg-[#1D1916] text-[#28231D] dark:text-[#EDE6DE] relative flex flex-col font-sans transition-colors duration-200">
+        {/* 
+        Extreme bottom-right corner subtle sage tint (as required: 
+        "ֻ������ҳ�漫���½ǵķǳ�С�������һ˿������β���̣�Լռ5%~10%���ǳ����")
+      */}
+        <div className="sage-ambient-corner" />
+
+        {/* Subtle stationery watermark line drawing (bamboo & gentle gridlines, opacity 0.035) */}
+        <svg
+          className="pointer-events-none fixed right-2 top-20 w-64 h-80 text-[#746B61] opacity-[0.035] dark:opacity-[0.02] z-0 select-none"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="0.8"
+          viewBox="0 0 120 150"
+        >
+          <path
+            d="M70,140 C65,95 72,50 68,10 M68,10 C72,25 88,32 102,28 M68,10 C62,30 52,58 48,100 M62,50 C76,46 88,52 94,62 M55,75 C70,70 82,78 86,88"
+            strokeLinecap="round"
+          />
+          <path
+            d="M10,20 L110,20 M10,65 L110,65 M10,110 L110,110 M35,5 L35,145 M85,5 L85,145"
+            strokeDasharray="2 3"
+            strokeWidth="0.5"
+          />
+        </svg>
+
+        {storageError && (
+          <div
+            role="alert"
+            className="relative z-50 px-4 py-2 text-sm text-[#A55340]"
+          >
+            {storageError}
+          </div>
+        )}
+        {/* Main Content Area */}
+        <main className="flex-1 flex flex-col relative z-10">
+          <AnimatePresence mode="wait" initial={false}>
+            <PageTransition key={activeTab}>
+              {activeTab === 'today' && (
+                <TodayView
+                  tasks={todayTasks}
+                  onToggleTask={handleToggleTask}
+                  onOpenAddTask={handleOpenAddTask}
+                  onDeleteTask={handleDeleteTask}
+                  onEditTask={handleOpenEditTask}
+                  onReorderTasks={handleReorderTasks}
+                />
+              )}
+
+              {activeTab === 'tasks' && (
+                <TasksView
+                  tasks={tasks}
+                  onToggleTask={handleToggleTask}
+                  onDeleteTask={handleDeleteTask}
+                  onEditTask={handleOpenEditTask}
+                  onOpenAddTask={handleOpenAddTask}
+                  onReorderTasks={handleReorderTasks}
+                />
+              )}
+
+              {activeTab === 'projects' && (
+                <ProjectsView
+                  projects={projects}
+                  tasks={tasks}
+                  onAddProject={handleAddProject}
+                  onToggleTask={handleToggleTask}
+                  onEditTask={handleOpenEditTask}
+                />
+              )}
+
+              {activeTab === 'review' && (
+                <ReviewView
+                  reviews={reviews}
+                  period={reviewPeriod}
+                  onPeriodChange={setReviewPeriod}
+                  stats={{
+                    completed: reviewStats.completed,
+                    delayed: reviewStats.delayed,
+                    added: reviewStats.added,
+                    topProject: reviewStats.topProject,
+                    hours: 'Ͷ����',
+                  }}
+                  onAddReview={handleAddReview}
+                />
+              )}
+
+              {activeTab === 'more' && (
+                <MoreView
+                  settings={settings}
+                  devices={devices}
+                  tasksCount={tasks.length}
+                  projectsCount={projects.length}
+                  reviewsCount={reviews.length}
+                  onToggleTheme={() => {
+                    const applyTheme = () => {
+                      setSettings((s) => ({
+                        ...s,
+                        theme: s.theme === 'light' ? 'dark' : 'light',
+                      }));
+                    };
+                    if (
+                      typeof document !== 'undefined' &&
+                      'startViewTransition' in document &&
+                      !matchMedia('(prefers-reduced-motion: reduce)').matches &&
+                      settings.motionEnabled &&
+                      settings.motion !== 'simple'
+                    ) {
+                      (document as any).startViewTransition(applyTheme);
+                    } else {
+                      applyTheme();
+                    }
+                  }}
+                  onChangeMotionLevel={(lvl) =>
+                    setSettings((s) => ({
+                      ...s,
+                      motion: lvl,
+                    }))
+                  }
+                  onToggleSyncPause={() =>
+                    setSettings((previous) => ({
+                      ...previous,
+                      syncPaused: !previous.syncPaused,
+                    }))
+                  }
+                  onToggleMotion={() =>
+                    setSettings((s) => ({
+                      ...s,
+                      motionEnabled: !s.motionEnabled,
+                    }))
+                  }
+                  onTriggerSync={handleTriggerSync}
+                  onExportData={handleExportData}
+                  onImportBackup={handleImportBackup}
+                  onShowToast={showToast}
+                />
+              )}
+            </PageTransition>
+          </AnimatePresence>
+        </main>
+
+        {/* Floating Bottom Navigation */}
+        <BottomNavigation
+          activeTab={activeTab}
+          onTabChange={(tab) => {
+            setActiveTab(tab);
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          pendingCount={pendingCountTotal}
         />
-        <path
-          d="M10,20 L110,20 M10,65 L110,65 M10,110 L110,110 M35,5 L35,145 M85,5 L85,145"
-          strokeDasharray="2 3"
-          strokeWidth="0.5"
+
+        {/* Add / Edit Task Bottom Sheet */}
+        <AddTaskSheet
+          isOpen={isAddTaskOpen}
+          taskToEdit={taskToEdit}
+          projects={projects}
+          onClose={() => {
+            setIsAddTaskOpen(false);
+            setTaskToEdit(null);
+          }}
+          onSave={handleSaveTask}
         />
-      </svg>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative z-10">
-        {activeTab === 'today' && (
-          <TodayView
-            tasks={todayTasks}
-            onToggleTask={handleToggleTask}
-            onOpenAddTask={handleOpenAddTask}
-            onDeleteTask={handleDeleteTask}
-            onEditTask={handleOpenEditTask}
-            onReorderTasks={handleReorderTodayTasks}
-          />
-        )}
+        {/* Undo Snackbar on deletion */}
+        <UndoSnackbar
+          key={deletedTaskBackup?.task.id}
+          visible={!!deletedTaskBackup}
+          message={
+            deletedTaskBackup
+              ? `��ɾ����${deletedTaskBackup.task.title}��`
+              : '��ɾ������'
+          }
+          onUndo={handleUndoDelete}
+          onDismiss={dismiss}
+          duration={5000}
+        />
 
-        {activeTab === 'tasks' && (
-          <TasksView
-            tasks={tasks}
-            onToggleTask={handleToggleTask}
-            onDeleteTask={handleDeleteTask}
-            onEditTask={handleOpenEditTask}
-            onOpenAddTask={handleOpenAddTask}
-            onReorderTasks={handleReorderTasks}
-          />
-        )}
-
-        {activeTab === 'projects' && (
-          <ProjectsView
-            projects={projects}
-            tasks={tasks}
-            onAddProject={handleAddProject}
-            onToggleTask={handleToggleTask}
-            onEditTask={handleOpenEditTask}
-          />
-        )}
-
-        {activeTab === 'review' && (
-          <ReviewView
-            reviews={reviews}
-            stats={{
-              completed: reviewStats.completed,
-              delayed: reviewStats.delayed,
-              added: reviewStats.added,
-              topProject: reviewStats.topProject,
-              hours: '投入中',
-            }}
-            onAddReview={handleAddReview}
-          />
-        )}
-
-        {activeTab === 'more' && (
-          <MoreView
-            settings={settings}
-            devices={devices}
-            tasksCount={tasks.length}
-            projectsCount={projects.length}
-            reviewsCount={reviews.length}
-            onToggleTheme={() => {
-              const applyTheme = () => {
-                setSettings((s) => ({
-                  ...s,
-                  theme: s.theme === 'light' ? 'dark' : 'light',
-                }));
-              };
-              if (typeof document !== 'undefined' && 'startViewTransition' in document) {
-                (document as any).startViewTransition(applyTheme);
-              } else {
-                applyTheme();
-              }
-            }}
-            onChangeMotionLevel={(lvl) =>
-              setSettings((s) => ({
-                ...s,
-                motion: lvl,
-              }))
-            }
-            onToggleMotion={() =>
-              setSettings((s) => ({
-                ...s,
-                motionEnabled: !s.motionEnabled,
-              }))
-            }
-            onTriggerSync={handleTriggerSync}
-            onExportData={handleExportData}
-            onImportBackup={handleImportBackup}
-            onShowToast={showToast}
-          />
-        )}
-      </main>
-
-      {/* Floating Bottom Navigation */}
-      <BottomNavigation
-        activeTab={activeTab}
-        onTabChange={(tab) => {
-          setActiveTab(tab);
-          window.scrollTo({ top: 0, behavior: 'instant' });
-        }}
-        pendingCount={pendingCountTotal}
-      />
-
-      {/* Add / Edit Task Bottom Sheet */}
-      <AddTaskSheet
-        isOpen={isAddTaskOpen}
-        taskToEdit={taskToEdit}
-        projects={projects}
-        onClose={() => {
-          setIsAddTaskOpen(false);
-          setTaskToEdit(null);
-        }}
-        onSave={handleSaveTask}
-      />
-
-      {/* Undo Snackbar on deletion */}
-      <UndoSnackbar
-        visible={showUndoSnackbar}
-        message={deletedTaskBackup ? `已删除「${deletedTaskBackup.task.title}」` : '已删除任务'}
-        onUndo={handleUndoDelete}
-        onDismiss={() => setShowUndoSnackbar(false)}
-        duration={5000}
-      />
-
-      {/* Toast Notification */}
-      <Toast message={toastMessage} />
-    </div>
+        {/* Toast Notification */}
+        <Toast message={toastMessage} />
+      </div>
+    </MotionProvider>
   );
 }

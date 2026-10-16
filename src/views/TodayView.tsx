@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import type { Task } from '../types/index.ts';
+import { motion } from 'motion/react';
+import { useMotion } from '../motion/MotionProvider.tsx';
+import type { Task, DueCategory } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
 import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
@@ -10,7 +12,11 @@ interface TodayViewProps {
   onOpenAddTask: () => void;
   onDeleteTask?: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
-  onReorderTasks?: (fromIdx: number, toIdx: number) => void;
+  onReorderTasks?: (
+    id: string,
+    targetId: string,
+    category?: DueCategory,
+  ) => void;
 }
 
 export const TodayView: React.FC<TodayViewProps> = ({
@@ -21,6 +27,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
   onEditTask,
   onReorderTasks,
 }) => {
+  const config = useMotion();
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(true);
 
@@ -33,7 +40,8 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
   const totalCount = tasks.length;
   const completedCount = completedTasks.length;
-  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const progressPercent =
+    totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   return (
     <div className="flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
@@ -41,7 +49,9 @@ export const TodayView: React.FC<TodayViewProps> = ({
       <header className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-[#F5E8E4] dark:bg-[#422923] flex items-center justify-center text-[#A55340] dark:text-[#E08570]">
-            <span className="material-symbols-outlined text-[19px]">calendar_today</span>
+            <span className="material-symbols-outlined text-[19px]">
+              calendar_today
+            </span>
           </div>
           <div>
             <div className="text-[11px] font-normal text-[#786E64] dark:text-[#A89E92] leading-none mb-0.5">
@@ -60,20 +70,32 @@ export const TodayView: React.FC<TodayViewProps> = ({
           aria-label="新建待办"
           className="w-8 h-8 rounded-full bg-[#A55340] hover:bg-[#873C2A] text-white flex items-center justify-center shadow-[0_2px_6px_rgba(165,83,64,0.3)] active:scale-90 transition-transform cursor-pointer"
         >
-          <span className="material-symbols-outlined text-[20px] leading-none">add</span>
+          <span className="material-symbols-outlined text-[20px] leading-none">
+            add
+          </span>
         </button>
       </header>
 
       {/* Overview stats & Subtitle Banner */}
-      <div className="flex items-baseline justify-between mb-3.5">
+      <motion.div
+        layoutId={config.allowParallax ? 'task-summary' : undefined}
+        transition={{ duration: config.durations.pageTransition / 1000 }}
+        className="flex items-baseline justify-between mb-3.5"
+      >
         <div>
           <div className="flex items-baseline gap-2">
             <h2 className="text-[22px] font-bold text-[#28231D] dark:text-[#EDE6DE] flex items-baseline">
-              今日待办 · <AnimatedNumber value={totalCount} className="mx-1" />项
+              今日待办 · <AnimatedNumber value={totalCount} className="mx-1" />
+              项
             </h2>
           </div>
           <p className="text-[12px] text-[#786E64] dark:text-[#A89E92] mt-0.5">
-            5月24日 · 星期五 · 顺遂有序 · 心安神凝
+            {new Date().toLocaleDateString('zh-CN', {
+              month: 'long',
+              day: 'numeric',
+              weekday: 'long',
+            })}{' '}
+            · 顺遂有序 · 心安神凝
           </p>
         </div>
 
@@ -82,7 +104,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
           <span>进行度</span>
           <AnimatedNumber value={progressPercent} suffix="%" />
         </div>
-      </div>
+      </motion.div>
 
       {/* Segmented Control Filter */}
       <SegmentedControl
@@ -97,22 +119,27 @@ export const TodayView: React.FC<TodayViewProps> = ({
       />
 
       {/* Pending Tasks List */}
-      <div className="flex flex-col gap-1 transition-all duration-300">
+      <div
+        role="list"
+        data-drop-category="today"
+        className="flex flex-col gap-1 transition-all duration-300"
+      >
         {displayedPending.map((task, idx) => (
           <SwipeableTaskItem
             key={task.id}
             task={task}
             index={idx}
+            group="today-pending"
             variant="card"
             showDetails={true}
             onToggle={() => onToggleTask(task.id)}
             onDelete={() => onDeleteTask?.(task.id)}
             onEdit={onEditTask}
-            onReorder={(dragIdx, hoverIdx) => onReorderTasks?.(dragIdx, hoverIdx)}
+            onReorder={onReorderTasks}
           />
         ))}
 
-        {displayedPending.length === 0 && filter === 'pending' && (
+        {displayedPending.length === 0 && displayedCompleted.length === 0 && (
           <div className="text-center py-8 text-[13px] text-[#786E64] dark:text-[#A89E92]">
             今日所有待办均已完成，心安神凝
           </div>

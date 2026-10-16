@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import type { AppSettings, SyncDevice, BackupData } from '../types/index.ts';
+import { useDialog } from '../hooks/useDialog.ts';
 import { validateBackupData } from '../utils/taskLogic.ts';
 
 interface MoreViewProps {
@@ -11,6 +12,7 @@ interface MoreViewProps {
   onToggleTheme: () => void;
   onChangeMotionLevel: (level: 'simple' | 'standard' | 'rich') => void;
   onToggleMotion: () => void;
+  onToggleSyncPause?: () => void;
   onTriggerSync: () => void;
   onExportData: () => void;
   onImportBackup: (backup: BackupData, mode: 'overwrite' | 'merge') => void;
@@ -26,19 +28,22 @@ export const MoreView: React.FC<MoreViewProps> = ({
   onToggleTheme,
   onChangeMotionLevel,
   onToggleMotion,
+  onToggleSyncPause,
   onTriggerSync,
   onExportData,
   onImportBackup,
   onShowToast,
 }) => {
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
+  const isPaused = !!settings.syncPaused;
   const [showDeviceModal, setShowDeviceModal] = useState(false);
   const [showPairModal, setShowPairModal] = useState(false);
-  const [pairedDevices, setPairedDevices] = useState(devices);
+  const pairedDevices = devices;
 
   // Backup Import preview modal state
-  const [pendingImportData, setPendingImportData] = useState<BackupData | null>(null);
+  const [pendingImportData, setPendingImportData] = useState<BackupData | null>(
+    null,
+  );
   const [importPreviewCounts, setImportPreviewCounts] = useState<{
     tasks: number;
     projects: number;
@@ -46,6 +51,12 @@ export const MoreView: React.FC<MoreViewProps> = ({
   } | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showMotionMenu, setShowMotionMenu] = useState(false);
+
+  useDialog(showDeviceModal || showPairModal || showImportModal, () => {
+    setShowDeviceModal(false);
+    setShowPairModal(false);
+    setShowImportModal(false);
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,16 +66,16 @@ export const MoreView: React.FC<MoreViewProps> = ({
       return;
     }
     setIsSyncing(true);
-    onShowToast('正在局域网极速同步数据...');
+    onShowToast('正在更新同步演示状态…');
     setTimeout(() => {
       setIsSyncing(false);
       onTriggerSync();
-      onShowToast('局域网同步完成 · 耗时 38ms');
+      onShowToast('同步演示完成，尚未连接真实设备');
     }, 700);
   };
 
   const handleTogglePause = () => {
-    setIsPaused(!isPaused);
+    onToggleSyncPause?.();
     onShowToast(!isPaused ? '局域网自动同步已暂停' : '局域网自动同步已恢复');
   };
 
@@ -80,6 +91,10 @@ export const MoreView: React.FC<MoreViewProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      onShowToast('备份文件过大，请选择小于 20 MB 的文件');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -108,10 +123,17 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
   const confirmImport = (mode: 'overwrite' | 'merge') => {
     if (!pendingImportData) return;
-    onImportBackup(pendingImportData, mode);
+    try {
+      onImportBackup(pendingImportData, mode);
+    } catch (error) {
+      onShowToast(error instanceof Error ? error.message : '导入失败');
+      return;
+    }
     setShowImportModal(false);
     setPendingImportData(null);
-    onShowToast(mode === 'overwrite' ? '已成功恢复覆盖数据' : '已成功合并导入备份数据');
+    onShowToast(
+      mode === 'overwrite' ? '已成功恢复覆盖数据' : '已成功合并导入备份数据',
+    );
   };
 
   return (
@@ -145,7 +167,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
           aria-label="帮助与提示"
           className="w-8 h-8 rounded-full bg-[#F5F1E8] dark:bg-[#342E28] hover:bg-[#EBE4D6] text-[#786E64] dark:text-[#A89E92] flex items-center justify-center transition-colors cursor-pointer"
         >
-          <span className="material-symbols-outlined text-[19px]">help_outline</span>
+          <span className="material-symbols-outlined text-[19px]">
+            help_outline
+          </span>
         </button>
       </header>
 
@@ -165,21 +189,27 @@ export const MoreView: React.FC<MoreViewProps> = ({
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[#FAF6EF] dark:bg-[#342E28] flex items-center justify-center text-[#786E64] dark:text-[#A89E92]">
-                    <span className="material-symbols-outlined text-[20px]">laptop_chromebook</span>
+                    <span className="material-symbols-outlined text-[20px]">
+                      laptop_chromebook
+                    </span>
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[14px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-                        ThinkPad-Studio
+                        {devices[0]?.name || '暂无配对设备'}
                       </span>
                       <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#EBE4D6] dark:bg-[#3E362F] text-[#786E64] dark:text-[#A89E92] font-mono">
-                        Win 11
+                        {devices[0]?.os || '—'}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5 text-[11.5px]">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#6C8271]" />
                       <span className="text-[#6C8271] dark:text-[#95B59C] font-medium">
-                        {isPaused ? '局域网已暂停' : '局域网已连接 · 极佳'}
+                        {isPaused
+                          ? '同步已暂停'
+                          : devices.length
+                            ? '演示设备 · ' + devices[0].quality
+                            : '暂无配对设备'}
                       </span>
                     </div>
                   </div>
@@ -190,7 +220,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                   onClick={() => setShowDeviceModal(true)}
                   className="text-[#8C7F73] hover:text-[#28231D] p-1"
                 >
-                  <span className="material-symbols-outlined text-[18px]">more_horiz</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    more_horiz
+                  </span>
                 </button>
               </div>
 
@@ -232,6 +264,17 @@ export const MoreView: React.FC<MoreViewProps> = ({
             {/* List options */}
             <div className="divide-y divide-[#746B61]/8 dark:divide-[#5E544A]/15 border-t border-[#746B61]/8 text-[12.5px]">
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (
+                    event.target === event.currentTarget &&
+                    (event.key === 'Enter' || event.key === ' ')
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.click();
+                  }
+                }}
                 onClick={() => setShowDeviceModal(true)}
                 className="px-3.5 py-2.5 flex items-center justify-between hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 cursor-pointer transition-colors"
               >
@@ -247,6 +290,17 @@ export const MoreView: React.FC<MoreViewProps> = ({
               </div>
 
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (
+                    event.target === event.currentTarget &&
+                    (event.key === 'Enter' || event.key === ' ')
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.click();
+                  }
+                }}
                 onClick={() => setShowPairModal(true)}
                 className="px-3.5 py-2.5 flex items-center justify-between hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 cursor-pointer transition-colors"
               >
@@ -256,7 +310,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                   </span>
                   <span>配对新电脑 / 移动端</span>
                 </div>
-                <span className="text-[11px] text-[#786E64]">广播搜索中 &gt;</span>
+                <span className="text-[11px] text-[#786E64]">
+                  广播搜索中 &gt;
+                </span>
               </div>
             </div>
           </div>
@@ -274,48 +330,69 @@ export const MoreView: React.FC<MoreViewProps> = ({
           <div className="paper-card rounded-[16px] bg-white dark:bg-[#27221E] overflow-hidden divide-y divide-[#746B61]/8 dark:divide-[#5E544A]/15 text-[12.5px]">
             {/* Theme row */}
             <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  (event.key === 'Enter' || event.key === ' ')
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.click();
+                }
+              }}
               onClick={onToggleTheme}
               className="px-3.5 py-2.5 flex items-center justify-between hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2 text-[#28231D] dark:text-[#EDE6DE]">
                 <div className="w-6 h-6 rounded-lg bg-[#FAF6EF] dark:bg-[#342E28] flex items-center justify-center text-[#A55340]">
-                  <span className="material-symbols-outlined text-[15px]">palette</span>
+                  <span className="material-symbols-outlined text-[15px]">
+                    palette
+                  </span>
                 </div>
                 <div>
                   <div className="font-medium">主题外观</div>
-                  <div className="text-[11px] text-[#786E64]">纸感与滋润暗色风格</div>
+                  <div className="text-[11px] text-[#786E64]">
+                    纸感与滋润暗色风格
+                  </div>
                 </div>
               </div>
               <span className="text-[#786E64] dark:text-[#A89E92] text-[12px] flex items-center gap-0.5">
                 {settings.theme === 'light' ? '浅色纸张' : '深色宣纸'}
-                <span className="material-symbols-outlined text-[15px]">chevron_right</span>
+                <span className="material-symbols-outlined text-[15px]">
+                  chevron_right
+                </span>
               </span>
             </div>
 
             {/* Motion toggle & level row */}
-            <div className="px-3.5 py-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[#28231D] dark:text-[#EDE6DE]">
+            <div className="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-1 basis-[210px] min-w-0 items-center gap-2 text-[#28231D] dark:text-[#EDE6DE]">
                 <div className="w-6 h-6 rounded-lg bg-[#FAF6EF] dark:bg-[#342E28] flex items-center justify-center text-[#6C8271]">
-                  <span className="material-symbols-outlined text-[15px]">motion_photos_on</span>
+                  <span className="material-symbols-outlined text-[15px]">
+                    motion_photos_on
+                  </span>
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5 font-medium">
-                    <span>动效系统等级</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C] font-mono">
+                  <div className="flex flex-wrap items-center gap-1.5 font-medium">
+                    <span className="whitespace-nowrap">动效系统等级</span>
+                    <span className="text-[10px] whitespace-nowrap px-1.5 py-0.2 rounded bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C] font-mono">
                       {settings.motion === 'simple'
                         ? '简单 (减弱)'
                         : settings.motion === 'rich'
-                        ? '细腻 (丰富)'
-                        : '标准 (默认)'}
+                          ? '细腻 (丰富)'
+                          : '标准 (默认)'}
                     </span>
                   </div>
                   <div className="text-[11px] text-[#786E64]">
-                    {settings.motionEnabled ? '平滑弹性曲线与触觉微震' : '已关闭动效'}
+                    {settings.motionEnabled
+                      ? '平滑弹性曲线与触觉微震'
+                      : '已关闭动效'}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0 ml-auto">
                 {/* Motion level picker */}
                 <div className="flex items-center bg-[#FAF6EF] dark:bg-[#342E28] p-0.5 rounded-lg border border-[#746B61]/12">
                   {(['simple', 'standard', 'rich'] as const).map((lvl) => (
@@ -323,13 +400,17 @@ export const MoreView: React.FC<MoreViewProps> = ({
                       key={lvl}
                       type="button"
                       onClick={() => onChangeMotionLevel(lvl)}
-                      className={`text-[11px] px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                      className={`text-[11px] whitespace-nowrap shrink-0 px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
                         settings.motion === lvl
                           ? 'bg-[#A55340] text-white font-medium shadow-2xs'
                           : 'text-[#786E64] hover:text-[#28231D]'
                       }`}
                     >
-                      {lvl === 'simple' ? '微弱' : lvl === 'standard' ? '标准' : '丰富'}
+                      {lvl === 'simple'
+                        ? '微弱'
+                        : lvl === 'standard'
+                          ? '标准'
+                          : '丰富'}
                     </button>
                   ))}
                 </div>
@@ -337,6 +418,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                 {/* Toggle switch */}
                 <button
                   type="button"
+                  aria-label="动效开关"
+                  role="switch"
+                  aria-checked={settings.motionEnabled}
                   onClick={onToggleMotion}
                   className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
                     settings.motionEnabled ? 'bg-[#6C8271]' : 'bg-[#D3C9BD]'
@@ -353,21 +437,38 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
             {/* Notification policy */}
             <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  (event.key === 'Enter' || event.key === ' ')
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.click();
+                }
+              }}
               onClick={() => onShowToast('当前已开启：温和微震提醒')}
               className="px-3.5 py-2.5 flex items-center justify-between hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-2 text-[#28231D] dark:text-[#EDE6DE]">
                 <div className="w-6 h-6 rounded-lg bg-[#FAF6EF] dark:bg-[#342E28] flex items-center justify-center text-[#C88A3A]">
-                  <span className="material-symbols-outlined text-[15px]">notifications</span>
+                  <span className="material-symbols-outlined text-[15px]">
+                    notifications
+                  </span>
                 </div>
                 <div>
                   <div className="font-medium">提醒策略</div>
-                  <div className="text-[11px] text-[#786E64]">专注于当下，减少无谓打扰</div>
+                  <div className="text-[11px] text-[#786E64]">
+                    专注于当下，减少无谓打扰
+                  </div>
                 </div>
               </div>
               <span className="text-[#786E64] dark:text-[#A89E92] text-[12px] flex items-center gap-0.5">
                 温和微震
-                <span className="material-symbols-outlined text-[15px]">chevron_right</span>
+                <span className="material-symbols-outlined text-[15px]">
+                  chevron_right
+                </span>
               </span>
             </div>
           </div>
@@ -385,6 +486,17 @@ export const MoreView: React.FC<MoreViewProps> = ({
           <div className="paper-card rounded-[16px] bg-white dark:bg-[#27221E] overflow-hidden divide-y divide-[#746B61]/8 dark:divide-[#5E544A]/15 text-[12.5px]">
             {/* Export */}
             <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  (event.key === 'Enter' || event.key === ' ')
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.click();
+                }
+              }}
               onClick={onExportData}
               className="px-3.5 py-2.5 flex items-center justify-between hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 cursor-pointer transition-colors"
             >
@@ -394,7 +506,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                 </span>
                 <div>
                   <div className="font-medium">导出完整数据备份</div>
-                  <div className="text-[11px] text-[#786E64]">生成包含待办/项目/复盘的 .json</div>
+                  <div className="text-[11px] text-[#786E64]">
+                    生成包含待办/项目/复盘的 .json
+                  </div>
                 </div>
               </div>
               <span className="px-2 py-0.5 rounded bg-[#FAF6EF] dark:bg-[#342E28] text-[#A55340] dark:text-[#E08570] text-[11px] font-mono font-medium">
@@ -404,6 +518,17 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
             {/* Import */}
             <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  (event.key === 'Enter' || event.key === ' ')
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.click();
+                }
+              }}
               onClick={handleImportClick}
               className="px-3.5 py-2.5 flex items-center justify-between hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 cursor-pointer transition-colors"
             >
@@ -413,7 +538,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                 </span>
                 <div>
                   <div className="font-medium">导入恢复备份数据</div>
-                  <div className="text-[11px] text-[#786E64]">支持结构校验、覆盖或增量合并</div>
+                  <div className="text-[11px] text-[#786E64]">
+                    支持结构校验、覆盖或增量合并
+                  </div>
                 </div>
               </div>
               <span className="text-[#786E64] text-[12px] flex items-center gap-0.5">
@@ -425,10 +552,12 @@ export const MoreView: React.FC<MoreViewProps> = ({
             <div className="p-3.5 bg-[#FAF6EF]/40 dark:bg-[#201C19]">
               <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-2 font-medium">
                 <span className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">inventory_2</span>
+                  <span className="material-symbols-outlined text-[14px]">
+                    inventory_2
+                  </span>
                   本地数据统计
                 </span>
-                <span>schemaVersion: 1</span>
+                <span>schemaVersion: 2</span>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -458,10 +587,16 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
       {/* Backup Import Preview & Confirmation Dialog */}
       {showImportModal && importPreviewCounts && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#28231D]/45 backdrop-blur-sm animate-in fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#28231D]/45 backdrop-blur-sm animate-in fade-in"
+        >
           <div className="w-full max-w-sm bg-white dark:bg-[#27221E] rounded-2xl p-5 shadow-xl border border-[#746B61]/15">
             <div className="flex items-center gap-2 text-[#A55340] mb-2">
-              <span className="material-symbols-outlined text-[20px]">file_open</span>
+              <span className="material-symbols-outlined text-[20px]">
+                file_open
+              </span>
               <h3 className="text-[16px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
                 确认导入备份数据
               </h3>
@@ -526,7 +661,11 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
       {/* Device Detail Sheet Modal */}
       {showDeviceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#28231D]/40 backdrop-blur-sm animate-in fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#28231D]/40 backdrop-blur-sm animate-in fade-in"
+        >
           <div className="w-full max-w-sm bg-white dark:bg-[#27221E] rounded-2xl p-5 shadow-xl border border-[#746B61]/15">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-[16px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
@@ -537,7 +676,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                 onClick={() => setShowDeviceModal(false)}
                 className="text-[#786E64] hover:text-[#28231D]"
               >
-                <span className="material-symbols-outlined text-[18px]">close</span>
+                <span className="material-symbols-outlined text-[18px]">
+                  close
+                </span>
               </button>
             </div>
 
@@ -548,7 +689,9 @@ export const MoreView: React.FC<MoreViewProps> = ({
                   className="p-3 rounded-xl bg-[#FAF6EF] dark:bg-[#342E28] flex items-center justify-between text-[12.5px]"
                 >
                   <div>
-                    <div className="font-semibold text-[#28231D] dark:text-[#EDE6DE]">{d.name}</div>
+                    <div className="font-semibold text-[#28231D] dark:text-[#EDE6DE]">
+                      {d.name}
+                    </div>
                     <div className="text-[11px] text-[#786E64] mt-0.5">
                       {d.os} · 延迟 {d.pingMs}ms · 上次同步 {d.lastSync}
                     </div>
@@ -573,7 +716,11 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
       {/* Pair New Device Modal */}
       {showPairModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#28231D]/40 backdrop-blur-sm animate-in fade-in">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#28231D]/40 backdrop-blur-sm animate-in fade-in"
+        >
           <div className="w-full max-w-sm bg-white dark:bg-[#27221E] rounded-2xl p-5 shadow-xl border border-[#746B61]/15 text-center">
             <span className="material-symbols-outlined text-[36px] text-[#A55340] mb-2 animate-pulse">
               radar
@@ -586,14 +733,15 @@ export const MoreView: React.FC<MoreViewProps> = ({
             </p>
 
             <div className="p-3 rounded-xl bg-[#FAF6EF] dark:bg-[#342E28] text-[12px] text-[#786E64] mb-4">
-              广播端口：<code className="font-mono text-[#A55340]">5353 (mDNS)</code>
+              广播端口：
+              <code className="font-mono text-[#A55340]">5353 (mDNS)</code>
             </div>
 
             <button
               type="button"
               onClick={() => {
                 setShowPairModal(false);
-                onShowToast('配对广播已建立，等待对端握手');
+                onShowToast('配对界面演示，尚未连接真实设备');
               }}
               className="w-full py-2 rounded-xl bg-[#A55340] text-white text-[13px] font-medium"
             >

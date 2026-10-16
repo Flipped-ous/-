@@ -1,48 +1,58 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
-    --bg-page: #F5F1E8;
-    --bg-card: #FFFFFF;
-    --bg-card-subtle: #FAF6EF;
-    --text-main: #28231D;
-    --text-muted: #786E64;
-    --text-dim: #9E9284;
-    --accent-terracotta: #A55340;
-    --accent-terracotta-dark: #873C2A;
-    --accent-sage: #6C8271;
-    --accent-sage-dark: #4C6450;
-    --accent-amber: #C88A3A;
+    --bg-page: #f5f1e8;
+    --bg-card: #ffffff;
+    --bg-card-subtle: #faf6ef;
+    --text-main: #28231d;
+    --text-muted: #786e64;
+    --text-dim: #9e9284;
+    --accent-terracotta: #a55340;
+    --accent-terracotta-dark: #873c2a;
+    --accent-sage: #6c8271;
+    --accent-sage-dark: #4c6450;
+    --accent-amber: #c88a3a;
     --border-dim: rgba(116, 107, 97, 0.08);
     --border-pill: rgba(116, 107, 97, 0.15);
-    --shadow-paper: 0 2px 6px rgba(60, 50, 40, 0.035), 0 1px 2px rgba(60, 50, 40, 0.02);
-    --shadow-elevated: 0 8px 24px rgba(60, 50, 40, 0.07), 0 2px 6px rgba(60, 50, 40, 0.03);
+    --shadow-paper:
+      0 2px 6px rgba(60, 50, 40, 0.035), 0 1px 2px rgba(60, 50, 40, 0.02);
+    --shadow-elevated:
+      0 8px 24px rgba(60, 50, 40, 0.07), 0 2px 6px rgba(60, 50, 40, 0.03);
   }
 
   .dark {
-    --bg-page: #1D1916;
-    --bg-card: #27221E;
-    --bg-card-subtle: #302B26;
-    --text-main: #EDE6DE;
-    --text-muted: #A89E92;
-    --text-dim: #796F64;
-    --accent-terracotta: #C76E59;
-    --accent-terracotta-dark: #E08570;
-    --accent-sage: #819E87;
-    --accent-sage-dark: #6C8772;
-    --accent-amber: #DB9D4B;
+    --bg-page: #1d1916;
+    --bg-card: #27221e;
+    --bg-card-subtle: #302b26;
+    --text-main: #ede6de;
+    --text-muted: #a89e92;
+    --text-dim: #796f64;
+    --accent-terracotta: #c76e59;
+    --accent-terracotta-dark: #e08570;
+    --accent-sage: #819e87;
+    --accent-sage-dark: #6c8772;
+    --accent-amber: #db9d4b;
     --border-dim: rgba(220, 205, 190, 0.09);
     --border-pill: rgba(220, 205, 190, 0.16);
-    --shadow-paper: 0 2px 6px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.18);
-    --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
+    --shadow-paper:
+      0 2px 6px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.18);
+    --shadow-elevated:
+      0 8px 24px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
   }
 
-  html, body {
+  html,
+  body {
     margin: 0;
     padding: 0;
     background-color: var(--bg-page);
     color: var(--text-main);
-    font-family: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+    font-family:
+      'Noto Sans SC',
+      system-ui,
+      -apple-system,
+      sans-serif;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior-y: none;
   }
@@ -53,7 +63,10 @@
   background-color: var(--bg-card);
   border: 1px solid var(--border-dim);
   box-shadow: var(--shadow-paper);
-  transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.18s ease, opacity 0.25s ease;
+  transition:
+    transform 0.18s cubic-bezier(0.2, 0, 0, 1),
+    box-shadow 0.18s ease,
+    opacity 0.25s ease;
   will-change: transform, opacity;
 }
 
@@ -89,9 +102,15 @@
 
 /* Checkbox micro-interactions */
 @keyframes checkBounce {
-  0% { transform: scale(0.85); }
-  55% { transform: scale(1.12); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(0.85);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 @keyframes checkmarkDraw {
@@ -153,7 +172,9 @@
 .accordion-grid {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows 300ms cubic-bezier(0.25, 1, 0.5, 1), opacity 260ms ease;
+  transition:
+    grid-template-rows 300ms cubic-bezier(0.25, 1, 0.5, 1),
+    opacity 260ms ease;
   opacity: 0;
 }
 
@@ -186,12 +207,22 @@
   width: 180px;
   height: 180px;
   border-radius: 9999px;
-  background: radial-gradient(circle at 100% 100%, rgba(108, 130, 113, 0.08) 0%, rgba(108, 130, 113, 0.03) 40%, transparent 75%);
+  background: radial-gradient(
+    circle at 100% 100%,
+    rgba(108, 130, 113, 0.08) 0%,
+    rgba(108, 130, 113, 0.03) 40%,
+    transparent 75%
+  );
   z-index: 0;
 }
 
 .dark .sage-ambient-corner {
-  background: radial-gradient(circle at 100% 100%, rgba(129, 158, 135, 0.08) 0%, rgba(129, 158, 135, 0.02) 40%, transparent 75%);
+  background: radial-gradient(
+    circle at 100% 100%,
+    rgba(129, 158, 135, 0.08) 0%,
+    rgba(129, 158, 135, 0.02) 40%,
+    transparent 75%
+  );
 }
 
 /* Hide native scrollbars while preserving scrolling */
@@ -201,4 +232,72 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Shared motion tokens, including the off/reduced-motion path. */
+:root {
+  --motion-smallTransition: 190ms;
+  --motion-listReflow: 280ms;
+  --motion-bottomSheet: 300ms;
+  --ambient-shift: 0px;
+}
+.app-root *,
+.app-root *::before,
+.app-root *::after {
+  transition-duration: var(--motion-smallTransition);
+}
+.accordion-grid {
+  transition-duration: var(--motion-listReflow);
+}
+.bottom-sheet {
+  max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+  overflow-y: auto;
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
+}
+nav[aria-label='�ײ�������'] {
+  bottom: calc(0.75rem + env(safe-area-inset-bottom));
+}
+.sage-ambient-corner {
+  transform: translateY(calc(-1 * var(--ambient-shift)));
+}
+.task-checkbox::before {
+  content: '';
+  position: absolute;
+  inset: -13px;
+}
+html[data-motion='simple'] .paper-card:active {
+  transform: none;
+}
+html[data-motion='simple'] .checkbox-icon-active {
+  animation: none;
+}
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+html[data-motion='simple'] ::view-transition-old(root),
+html[data-motion='simple'] ::view-transition-new(root) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse,
+  .animate-spin,
+  .animate-number-roll-up,
+  .animate-number-roll-down,
+  .checkmark-path {
+    animation: none;
+  }
+}
+
+.bottom-sheet {
+  max-height: calc(
+    var(--dialog-height, 100dvh) - env(safe-area-inset-top) - 12px
+  );
+  overflow: hidden;
+}
+.dark .text-\[\#786E64\] {
+  color: var(--text-muted);
 }
