@@ -23,13 +23,13 @@ export function migrateStorageData(
   raw: any,
   reference = new Date(),
 ): StoredData {
-  if (!raw || typeof raw !== 'object') throw new Error('�������ݸ�ʽ��');
+  if (!raw || typeof raw !== 'object') throw new Error('本地数据格式损坏');
   if (raw.schemaVersion > 2)
-    throw new Error('�����������Ը��°汾��������Ӧ��');
+    throw new Error('本地数据来自更新版本，请升级应用');
   const stamp = reference.toISOString();
   const projects: Project[] = (raw.projects || []).map((p: any) => {
     if (!p || typeof p.id !== 'string' || typeof p.name !== 'string')
-      throw new Error('��Ŀ���ݸ�ʽ��');
+      throw new Error('项目数据格式损坏');
     const { innerTasks, pendingCount, completedCount, ...rest } = p;
     return {
       ...rest,
@@ -46,7 +46,7 @@ export function migrateStorageData(
   ];
   for (const t of taskRows) {
     if (!t || typeof t.id !== 'string' || typeof t.title !== 'string')
-      throw new Error('�������ݸ�ʽ��');
+      throw new Error('任务数据格式损坏');
     const project = projects.find(
       (p) => p.id === t.projectId || p.name === t.project,
     );

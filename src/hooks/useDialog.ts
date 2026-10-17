@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { navigationVisibility } from '../services/navigationVisibility.ts';
 
 /** Shared Escape/Back, focus and scroll handling; the existing sheet markup remains unchanged. */
 export function useDialog(open: boolean, close: () => void) {
   const closeRef = useRef(close);
   closeRef.current = close;
+  useLayoutEffect(() => {
+    if (open) return navigationVisibility.holdDialog();
+  }, [open]);
   useEffect(() => {
     if (!open) return;
     const viewport = () =>

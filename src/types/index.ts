@@ -2,7 +2,7 @@ export type PriorityLevel = 'urgent' | 'important' | 'normal' | 'later';
 
 export type DueCategory = 'overdue' | 'today' | 'future' | 'none';
 
-export type TaskTagType = '�ص�' | 'Эͬ' | '�ճ�' | '���' | '�����' | string;
+export type TaskTagType = '重点' | '协同' | '日常' | '灵感' | '已完结' | string;
 
 export interface Task {
   id: string;
@@ -48,7 +48,7 @@ export interface Project {
   updatedAt: string;
 }
 
-export type ReviewMood = 'ƽ��' | '����' | '�н�չ' | 'רע' | '����' | 'ƣ��' | '����';
+export type ReviewMood = '平静' | '心流' | '有进展' | '专注' | '洞察' | '疲惫' | '焦虑';
 
 export interface ReviewEntry {
   id: string;
@@ -78,7 +78,7 @@ export interface SyncDevice {
   name: string;
   os: string;
   status: 'connected' | 'offline';
-  quality: '����' | '����' | '��ͨ';
+  quality: '极佳' | '良好' | '普通';
   pingMs: number;
   lastSync: string;
   isCurrent?: boolean;

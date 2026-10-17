@@ -12,7 +12,7 @@ function openDB(): Promise<IDBDatabase> {
   if (connection) return connection;
   connection = new Promise<IDBDatabase>((resolve, reject) => {
     if (typeof indexedDB === 'undefined')
-      return reject(new Error('IndexedDB ������'));
+      return reject(new Error('IndexedDB 不可用'));
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -22,9 +22,9 @@ function openDB(): Promise<IDBDatabase> {
             keyPath: name === 'settings' || name === 'meta' ? 'key' : 'id',
           });
     };
-    request.onblocked = () => reject(new Error('��ر������ɰ�ҳ������´�'));
+    request.onblocked = () => reject(new Error('请关闭其他旧版页面后重新打开'));
     request.onerror = () =>
-      reject(request.error || new Error('�޷��򿪱������ݿ�'));
+      reject(request.error || new Error('无法打开本地数据库'));
     request.onsuccess = () => {
       request.result.onversionchange = () => {
         request.result.close();
@@ -85,7 +85,7 @@ export async function loadStorageData(): Promise<StoredData | null> {
     }
     tx.oncomplete = () => resolve(result);
     tx.onerror = tx.onabort = () =>
-      reject(tx.error || new Error('��ȡ��������ʧ��'));
+      reject(tx.error || new Error('读取本地数据失败'));
   });
   const meta = raw.meta.find((row: any) => row.key === 'snapshot');
   const settings =
@@ -152,7 +152,7 @@ export function saveStorageData(data: StoredData): Promise<void> {
           });
           tx.oncomplete = () => resolve();
           tx.onerror = tx.onabort = () =>
-            reject(tx.error || new Error('���ر���ʧ��'));
+            reject(tx.error || new Error('本地保存失败'));
         });
         // A completed IndexedDB commit supersedes its fallback.
         try {
@@ -162,7 +162,7 @@ export function saveStorageData(data: StoredData): Promise<void> {
         try {
           localStorage.setItem(FALLBACK_KEY, JSON.stringify(snapshot));
         } catch {
-          throw new Error('���ر���ʧ�ܣ��뵼�����ݲ�����豸�洢�ռ�', {
+          throw new Error('本地保存失败，请导出备份并检查设备存储空间', {
             cause: error,
           });
         }

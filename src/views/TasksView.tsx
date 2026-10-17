@@ -1,3 +1,5 @@
+import { useMotion } from '../motion/MotionProvider.tsx';
+import { AnimatePresence, motion } from 'motion/react';
 import React, { useState } from 'react';
 import type { Task, DueCategory } from '../types/index.ts';
 import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
@@ -206,19 +208,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
               >
                 <div className="accordion-inner">
                   <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1 border-l-2 border-l-[#A55340]">
-                    {overdueTasks.map((task, idx) => (
-                      <SwipeableTaskItem
-                        key={task.id}
-                        task={task}
-                        group="overdue"
-                        index={idx}
-                        isLast={idx === overdueTasks.length - 1}
-                        onToggle={() => onToggleTask(task.id)}
-                        onDelete={() => onDeleteTask(task.id)}
-                        onEdit={onEditTask}
-                        onReorder={onReorderTasks}
-                      />
-                    ))}
+                    <AnimatePresence>
+                      {overdueTasks.map((task, idx) => (
+                        <SwipeableTaskItem
+                          key={task.id}
+                          task={task}
+                          group="overdue"
+                          index={idx}
+                          isLast={idx === overdueTasks.length - 1}
+                          onToggle={() => onToggleTask(task.id)}
+                          onDelete={() => onDeleteTask(task.id)}
+                          onEdit={onEditTask}
+                          onReorder={onReorderTasks}
+                        />
+                      ))}
+                    </AnimatePresence>
                   </div>
                 </div>
               </div>
@@ -253,25 +257,27 @@ export const TasksView: React.FC<TasksViewProps> = ({
             >
               <div className="accordion-inner">
                 <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1">
-                  {todayTasks.length > 0 ? (
-                    todayTasks.map((task, idx) => (
-                      <SwipeableTaskItem
-                        key={task.id}
-                        task={task}
-                        group="today"
-                        index={idx}
-                        isLast={idx === todayTasks.length - 1}
-                        onToggle={() => onToggleTask(task.id)}
-                        onDelete={() => onDeleteTask(task.id)}
-                        onEdit={onEditTask}
-                        onReorder={onReorderTasks}
-                      />
-                    ))
-                  ) : (
-                    <div className="py-4 text-center text-[12px] text-[#786E64]">
-                      今日待办已清空
-                    </div>
-                  )}
+                  <AnimatePresence>
+                    {todayTasks.length > 0 ? (
+                      todayTasks.map((task, idx) => (
+                        <SwipeableTaskItem
+                          key={task.id}
+                          task={task}
+                          group="today"
+                          index={idx}
+                          isLast={idx === todayTasks.length - 1}
+                          onToggle={() => onToggleTask(task.id)}
+                          onDelete={() => onDeleteTask(task.id)}
+                          onEdit={onEditTask}
+                          onReorder={onReorderTasks}
+                        />
+                      ))
+                    ) : (
+                      <div className="py-4 text-center text-[12px] text-[#786E64]">
+                        今日待办已清空
+                      </div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
@@ -305,19 +311,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
             >
               <div className="accordion-inner">
                 <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1">
-                  {futureTasks.map((task, idx) => (
-                    <SwipeableTaskItem
-                      key={task.id}
-                      task={task}
-                      group="future"
-                      index={idx}
-                      isLast={idx === futureTasks.length - 1}
-                      onToggle={() => onToggleTask(task.id)}
-                      onDelete={() => onDeleteTask(task.id)}
-                      onEdit={onEditTask}
-                      onReorder={onReorderTasks}
-                    />
-                  ))}
+                  <AnimatePresence>
+                    {futureTasks.map((task, idx) => (
+                      <SwipeableTaskItem
+                        key={task.id}
+                        task={task}
+                        group="future"
+                        index={idx}
+                        isLast={idx === futureTasks.length - 1}
+                        onToggle={() => onToggleTask(task.id)}
+                        onDelete={() => onDeleteTask(task.id)}
+                        onEdit={onEditTask}
+                        onReorder={onReorderTasks}
+                      />
+                    ))}
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
@@ -351,19 +359,21 @@ export const TasksView: React.FC<TasksViewProps> = ({
             >
               <div className="accordion-inner">
                 <div className="paper-card rounded-[14px] bg-white dark:bg-[#27221E] overflow-hidden mt-1">
-                  {noneTasks.map((task, idx) => (
-                    <SwipeableTaskItem
-                      key={task.id}
-                      task={task}
-                      group="none"
-                      index={idx}
-                      isLast={idx === noneTasks.length - 1}
-                      onToggle={() => onToggleTask(task.id)}
-                      onDelete={() => onDeleteTask(task.id)}
-                      onEdit={onEditTask}
-                      onReorder={onReorderTasks}
-                    />
-                  ))}
+                  <AnimatePresence>
+                    {noneTasks.map((task, idx) => (
+                      <SwipeableTaskItem
+                        key={task.id}
+                        task={task}
+                        group="none"
+                        index={idx}
+                        isLast={idx === noneTasks.length - 1}
+                        onToggle={() => onToggleTask(task.id)}
+                        onDelete={() => onDeleteTask(task.id)}
+                        onEdit={onEditTask}
+                        onReorder={onReorderTasks}
+                      />
+                    ))}
+                  </AnimatePresence>
                 </div>
               </div>
             </div>
@@ -419,6 +429,7 @@ const QuadrantBox: React.FC<{
   onToggle: (id: string) => void;
   onEdit?: (task: Task) => void;
 }> = ({ title, badge, color, tasks, onToggle, onEdit }) => {
+  const config = useMotion();
   const getHeaderColor = () => {
     switch (color) {
       case 'terracotta':
@@ -446,7 +457,11 @@ const QuadrantBox: React.FC<{
       <div className="p-2 flex flex-col gap-1.5">
         {tasks.length > 0 ? (
           tasks.map((task) => (
-            <div
+            <motion.div
+              layoutId={
+                config.allowScaleEffects ? `task-surface-${task.id}` : undefined
+              }
+              layout={config.allowScaleEffects ? 'position' : false}
               key={task.id}
               role="button"
               tabIndex={0}
@@ -484,7 +499,7 @@ const QuadrantBox: React.FC<{
               >
                 {task.title}
               </span>
-            </div>
+            </motion.div>
           ))
         ) : (
           <div className="py-2 text-center text-[11.5px] text-[#786E64]/70">

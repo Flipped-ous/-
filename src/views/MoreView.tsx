@@ -9,7 +9,7 @@ interface MoreViewProps {
   tasksCount: number;
   projectsCount: number;
   reviewsCount: number;
-  onToggleTheme: () => void;
+  onToggleTheme: (event: React.MouseEvent<HTMLElement>) => void;
   onChangeMotionLevel: (level: 'simple' | 'standard' | 'rich') => void;
   onToggleMotion: () => void;
   onToggleSyncPause?: () => void;
@@ -378,7 +378,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
                     <span className="whitespace-nowrap">动效系统等级</span>
                     <span className="text-[10px] whitespace-nowrap px-1.5 py-0.2 rounded bg-[#EAF0EB] dark:bg-[#28372B] text-[#6C8271] dark:text-[#95B59C] font-mono">
                       {settings.motion === 'simple'
-                        ? '简单 (减弱)'
+                        ? '简洁 (减弱)'
                         : settings.motion === 'rich'
                           ? '细腻 (丰富)'
                           : '标准 (默认)'}
@@ -407,7 +407,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
                       }`}
                     >
                       {lvl === 'simple'
-                        ? '微弱'
+                        ? '简洁'
                         : lvl === 'standard'
                           ? '标准'
                           : '丰富'}
@@ -427,8 +427,8 @@ export const MoreView: React.FC<MoreViewProps> = ({
                   }`}
                 >
                   <div
-                    className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform absolute top-0.5 ${
-                      settings.motionEnabled ? 'left-4.5' : 'left-0.5'
+                    className={`w-3.5 h-3.5 rounded-full bg-white shadow-sm transition-transform absolute top-0.5 left-0.5 ${
+                      settings.motionEnabled ? 'translate-x-4' : 'translate-x-0'
                     }`}
                   />
                 </button>

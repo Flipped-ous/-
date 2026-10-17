@@ -1,6 +1,6 @@
 {
-  "name": "�������� �� ���Ĵ����븴��",
-  "description": "һ�����������ơ����ж�����Ȼ���ʵĸ��˴��졢��Ŀ�븴�̹��ߡ�����ůֽ���У����������ͬ����",
+  "name": "今日有序 · 静心待办与复盘",
+  "description": "一个安静、克制、具有东方自然气质的个人待办、项目与复盘工具。温润暖纸触感，局域网多端同步。",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

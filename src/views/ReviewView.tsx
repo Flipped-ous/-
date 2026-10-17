@@ -131,7 +131,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
       {/* Today Overview Card (待办系统联动收揽) */}
       <motion.section
-        layoutId={config.allowParallax ? 'task-summary' : undefined}
+        layoutId={config.level === 'rich' ? 'task-summary' : undefined}
         transition={{ duration: config.durations.pageTransition / 1000 }}
         className="paper-card rounded-[16px] bg-white dark:bg-[#27221E] p-3.5 mb-4"
       >
@@ -157,7 +157,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               <span>{activeTab === 'week' ? '本周完成' : '本月完成'}</span>
             </div>
             <div className="text-[18px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-              <AnimatedNumber value={stats.completed} />
+              <AnimatedNumber
+                value={stats.completed}
+                sharedId="brand-completed"
+              />
             </div>
           </div>
 

@@ -46,7 +46,7 @@ test('first run differs from an intentionally empty saved database', async () =>
 test('serial atomic snapshots persist the final edit, settings and mock devices', async () => {
   const task = {
     id: 'a',
-    title: '���',
+    title: '最初',
     status: 'pending' as const,
     priority: 'normal' as const,
     project: '',
@@ -57,23 +57,23 @@ test('serial atomic snapshots persist the final edit, settings and mock devices'
     saveStorageData({ ...empty, tasks: [task] }),
     saveStorageData({
       ...empty,
-      tasks: [{ ...task, title: '����޸�' }],
+      tasks: [{ ...task, title: '最后修改' }],
       settings: { ...empty.settings!, theme: 'dark' },
       devices: [
         {
           id: 'd',
-          name: '�����豸',
+          name: '测试设备',
           os: 'Android',
           status: 'connected',
-          quality: '����',
+          quality: '良好',
           pingMs: 1,
-          lastSync: '�ո�',
+          lastSync: '刚刚',
         },
       ],
     }),
   ]);
   const loaded = await loadStorageData();
-  assert.equal(loaded?.tasks[0].title, '����޸�');
+  assert.equal(loaded?.tasks[0].title, '最后修改');
   assert.equal(loaded?.settings?.theme, 'dark');
   assert.equal(loaded?.devices[0].id, 'd');
 });
@@ -110,7 +110,7 @@ test('storage failures are reported instead of silently losing edits', async () 
     throw new DOMException('quota', 'QuotaExceededError');
   };
   try {
-    await assert.rejects(saveStorageData(empty), /���ر���ʧ��/);
+    await assert.rejects(saveStorageData(empty), /本地保存失败/);
   } finally {
     IDBDatabase.prototype.transaction = transaction;
     localStorage.setItem = setItem;
@@ -120,17 +120,17 @@ test('storage failures are reported instead of silently losing edits', async () 
 test('migration unions old task arrays and converts project innerTasks exactly once', () => {
   const legacy = {
     todayTasks: [
-      { id: 'a', title: '������', project: '��Ŀ', dueCategory: 'today' },
+      { id: 'a', title: '旧任务', project: '项目', dueCategory: 'today' },
     ],
     allTasks: [
-      { id: 'a', title: '������', project: '��Ŀ', dueCategory: 'today' },
+      { id: 'a', title: '旧任务', project: '项目', dueCategory: 'today' },
     ],
     projects: [
       {
         id: 'p',
-        name: '��Ŀ',
+        name: '项目',
         status: 'active',
-        innerTasks: [{ id: 'inner', title: '����Ŀ����', completed: true }],
+        innerTasks: [{ id: 'inner', title: '旧项目任务', completed: true }],
       },
     ],
   };
@@ -140,5 +140,5 @@ test('migration unions old task arrays and converts project innerTasks exactly o
   assert.ok(migrated.tasks[0].dueAt);
   assert.deepEqual(migrateStorageData(migrated, new Date(stamp)), migrated);
   assert.equal('innerTasks' in migrated.projects[0], false);
-  assert.throws(() => migrateStorageData({ schemaVersion: 999 }), /����/);
+  assert.throws(() => migrateStorageData({ schemaVersion: 999 }), /升级/);
 });

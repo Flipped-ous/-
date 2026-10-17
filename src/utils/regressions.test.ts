@@ -18,7 +18,7 @@ import type { Task, Project, AppSettings } from '../types/index.ts';
 const now = new Date(2026, 9, 17, 12);
 const project: Project = {
   id: 'p',
-  name: '��Ŀ',
+  name: '项目',
   description: '',
   status: 'active',
   createdAt: now.toISOString(),
@@ -32,9 +32,9 @@ const settings: AppSettings = {
 };
 const task: Task = {
   id: 'a',
-  title: '����',
+  title: '任务',
   projectId: 'p',
-  project: '��Ŀ',
+  project: '项目',
   status: 'pending',
   priority: 'normal',
   createdAt: now.toISOString(),
@@ -65,11 +65,11 @@ test('midnight survives date input; Saturday quick date includes today', () => {
 test('CRUD never duplicates IDs or changes a task ID on update', () => {
   const tasks = addTask([], { ...task }, now);
   assert.equal(addTask(tasks, task, now).length, 1);
-  const updated = updateTask(tasks, 'a', { title: '�޸�', id: 'evil' }, now);
+  const updated = updateTask(tasks, 'a', { title: '修改', id: 'evil' }, now);
   assert.equal(updated[0].id, 'a');
-  assert.equal(updated[0].title, '�޸�');
+  assert.equal(updated[0].title, '修改');
   assert.equal(
-    changeTaskProject(tasks, 'a', { id: 'b', name: '��һ����Ŀ' }, now)[0]
+    changeTaskProject(tasks, 'a', { id: 'b', name: '另一个项目' }, now)[0]
       .projectId,
     'b',
   );
@@ -83,7 +83,7 @@ test('editing only a title preserves the exact deadline, time and project', () =
   const edited = updateTask(
     [original],
     original.id,
-    { title: '�ı���' },
+    { title: '改标题' },
     now,
   )[0];
   assert.equal(edited.dueAt, original.dueAt);

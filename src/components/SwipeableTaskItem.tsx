@@ -5,6 +5,7 @@ import React, {
   useLayoutEffect,
   useCallback,
 } from 'react';
+import { magneticOffset, paperEase } from '../motion/physics.ts';
 import { motion } from 'motion/react';
 import type { Task, DueCategory } from '../types/index.ts';
 import { useMotion } from '../motion/MotionProvider.tsx';
@@ -55,7 +56,14 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   const longPress = useRef<ReturnType<typeof setTimeout> | null>(null);
   const thresholdCrossed = useRef(false);
   const lastHover = useRef('');
+  const magneticTarget = useRef<HTMLElement | null>(null);
+  const [magnet, setMagnet] = useState({ x: 0, y: 0 });
   const busy = useRef(false);
+  const clearMagnet = () => {
+    if (magneticTarget.current) delete magneticTarget.current.dataset.magnetic;
+    magneticTarget.current = null;
+    setMagnet({ x: 0, y: 0 });
+  };
   const mounted = useRef(true);
   const callbacks = useRef({
     task,
@@ -68,15 +76,15 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   callbacks.current = { task, onToggle, onDelete, onEdit, onReorder, group };
   const isCompleted = task.status === 'completed';
   const category = getDueCategory(task);
-  const badgeLabel = ['����', '����', '������', '��ʱ', '�����'].includes(
+  const badgeLabel = ['逾期', '今天', '本周六', '随时', '已完结'].includes(
     task.badgeLabel || '',
   )
     ? isCompleted
-      ? '�����'
+      ? '已完结'
       : category === 'overdue'
-        ? '����'
+        ? '逾期'
         : category === 'none'
-          ? '��ʱ'
+          ? '随时'
           : undefined
     : task.badgeLabel;
   const isEffectivelyCompleted = isCompleted || isCompletingLocally;
@@ -107,6 +115,8 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
     return () => {
       mounted.current = false;
       clearLongPress();
+      if (magneticTarget.current)
+        delete magneticTarget.current.dataset.magnetic;
       node?.removeEventListener('touchmove', preventScroll);
     };
   }, []);
@@ -159,6 +169,32 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
       clearLongPress();
     if (intent.current === 'idle') intent.current = gestureIntent(dx, dy);
     if (intent.current === 'reorder') {
+      let nearest:
+        | {
+            node: HTMLElement;
+            offset: NonNullable<ReturnType<typeof magneticOffset>>;
+          }
+        | undefined;
+      if (config.allowScaleEffects)
+        for (const node of document.querySelectorAll<HTMLElement>(
+          '[data-drop-category]',
+        )) {
+          const rect = node.getBoundingClientRect();
+          if (rect.height < 1 || rect.bottom < 0 || rect.top > innerHeight)
+            continue;
+          const offset = magneticOffset(event.clientX, event.clientY, rect);
+          if (offset && (!nearest || offset.distance < nearest.offset.distance))
+            nearest = { node, offset };
+        }
+      if (magneticTarget.current !== nearest?.node) {
+        if (magneticTarget.current)
+          delete magneticTarget.current.dataset.magnetic;
+        magneticTarget.current = nearest?.node || null;
+        if (nearest) nearest.node.dataset.magnetic = 'true';
+      }
+      setMagnet(
+        nearest ? { x: nearest.offset.x, y: nearest.offset.y } : { x: 0, y: 0 },
+      );
       setDragY(
         event.clientY -
           (containerRef.current?.getBoundingClientRect().top || 0) -
@@ -186,6 +222,14 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   };
   const finishAction = (action: 'complete' | 'delete') => {
     if (busy.current) return;
+    if (config.durations.confirmedSwipe === 0) {
+      (action === 'complete'
+        ? callbacks.current.onToggle
+        : callbacks.current.onDelete)();
+      setOffsetX(0);
+      setIsSwiping(false);
+      return;
+    }
     busy.current = true;
     setIsAnimatingOut(true);
     triggerHaptic(20);
@@ -221,9 +265,11 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
       event.currentTarget.releasePointerCapture(event.pointerId);
     if (mode === 'reorder') {
       if (!cancelled) {
-        const target = document
-          .elementFromPoint(event.clientX, event.clientY)
-          ?.closest<HTMLElement>('[data-drop-category]');
+        const target =
+          document
+            .elementFromPoint(event.clientX, event.clientY)
+            ?.closest<HTMLElement>('[data-drop-category]') ||
+          magneticTarget.current;
         const category = target?.dataset.dropCategory as
           | DueCategory
           | undefined;
@@ -237,6 +283,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
             category,
           );
       }
+      clearMagnet();
       setIsDragging(false);
       setDragY(0);
       return;
@@ -268,18 +315,18 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   const threshold = cardWidth * 0.45;
   const absOffset = Math.abs(offsetX);
   // Progress from 0 to 1 at 45% threshold
-  const rawProgress = Math.min(1.2, absOffset / threshold);
+  const rawProgress = Math.min(1, absOffset / cardWidth);
 
   // Background opacity begins gently around 12%, becoming clear by 40%
   const bgOpacity =
-    rawProgress < 0.12 ? 0 : Math.min(0.95, (rawProgress - 0.12) / 0.75);
+    rawProgress < 0.12 ? 0 : Math.min(0.95, (rawProgress - 0.12) / 0.3);
 
   // Icon opacity begins appearing around 20%, fully visible by 45%
   const iconOpacity =
-    rawProgress < 0.2 ? 0 : Math.min(1, (rawProgress - 0.2) / 0.65);
+    rawProgress < 0.2 ? 0 : Math.min(1, (rawProgress - 0.2) / 0.25);
 
   // Icon scale: 0.75 -> 1.05
-  const iconScale = 0.75 + Math.min(1, rawProgress) * 0.3;
+  const iconScale = 0.75 + Math.min(1, rawProgress / 0.45) * 0.25;
 
   const isRightSwipe = offsetX > 0;
   const isLeftSwipe = offsetX < 0;
@@ -302,28 +349,44 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
 
   // Transition style: NONE while dragging; smooth spring/ease on release
   const getCardTransition = () => {
+    if (isDragging) return 'none';
     if (isSwiping && !isSnappingBack && !isAnimatingOut) {
       return 'none';
     }
     if (isAnimatingOut) {
-      return `transform ${config.durations.confirmedSwipe}ms ${config.easings.decelerate}, opacity ${config.durations.confirmedSwipe}ms ease-out`;
+      return `translate ${config.durations.confirmedSwipe}ms ${config.easings.decelerate}, opacity ${config.durations.confirmedSwipe}ms ease-out`;
     }
     if (isSnappingBack) {
-      return `transform ${config.durations.cancelSwipe}ms ${config.easings.standard}`;
+      return `translate ${config.durations.cancelSwipe}ms ${config.easings.standard}`;
     }
-    return `transform ${config.durations.listReflow}ms ${config.easings.spring}, box-shadow ${config.durations.smallTransition}ms ease`;
+    return `translate ${config.durations.listReflow}ms ${config.easings.spring}, box-shadow ${config.durations.smallTransition}ms ease, padding ${config.durations.smallTransition}ms ease`;
   };
 
   return (
     <motion.div
       layout={isDragging || !config.allowScaleEffects ? false : 'position'}
+      layoutId={
+        config.allowScaleEffects && !isDragging
+          ? `task-surface-${task.id}`
+          : undefined
+      }
+      initial={
+        config.durations.smallTransition > 0 && index < 5
+          ? {
+              opacity: 0,
+              y: config.allowScaleEffects ? 5 : 0,
+              filter: config.allowScaleEffects ? 'blur(2px)' : 'blur(0px)',
+            }
+          : false
+      }
+      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+      exit={{ height: 0, opacity: 0, marginBottom: 0, pointerEvents: 'none' }}
       transition={{
-        layout: {
-          type: 'spring',
-          stiffness: 380,
-          damping: 34,
-          duration: config.durations.listReflow / 1000,
-        },
+        duration: Math.min(160, config.durations.smallTransition) / 1000,
+        delay: config.allowScaleEffects && index < 5 ? index * 0.02 : 0,
+        layout: isDragging
+          ? { duration: 0 }
+          : { duration: config.durations.listReflow / 1000, ease: paperEase },
       }}
       ref={containerRef}
       data-task-index={index}
@@ -348,6 +411,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
       onLostPointerCapture={handlePointerUp}
       style={{
         touchAction: 'pan-y',
+        overflow: isDragging ? 'visible' : undefined,
         pointerEvents: isDragging ? 'none' : undefined,
       }}
       className={`relative overflow-hidden select-none ${
@@ -380,7 +444,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
             {isCompleted ? 'undo' : 'check_circle'}
           </span>
           <span className="text-[13px] tracking-wide">
-            {isCompleted ? '�������' : '���'}
+            {isCompleted ? '撤销完成' : '完成'}
           </span>
         </div>
       </div>
@@ -403,7 +467,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
             transformOrigin: 'right center',
           }}
         >
-          <span className="text-[13px] tracking-wide">ɾ��</span>
+          <span className="text-[13px] tracking-wide">删除</span>
           <span className="material-symbols-outlined text-[20px] leading-none">
             delete
           </span>
@@ -411,20 +475,28 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
       </div>
 
       {/* FOREGROUND TASK SURFACE: Direct 1:1 Pointer Tracking */}
-      <div
+      <motion.div
+        animate={{ scale: isDragging && config.allowScaleEffects ? 1.02 : 1 }}
+        transition={
+          config.allowScaleEffects
+            ? { type: 'spring', stiffness: 420, damping: 36 }
+            : { duration: 0 }
+        }
         className={`relative bg-white dark:bg-[#27221E] flex items-start gap-3 select-none ${
           variant === 'card' ? 'p-3.5' : 'p-3 pl-3.5'
         } ${isEffectivelyCompleted ? 'opacity-70 is-completed' : ''}`}
         style={{
-          transform: isDragging
-            ? `translateY(${dragY}px) scale(${config.allowScaleEffects ? 1.02 : 1})`
-            : `translateX(${offsetX}px)`,
+          translate: isDragging
+            ? `${magnet.x}px ${dragY + magnet.y}px`
+            : `${offsetX}px 0px`,
           transition: getCardTransition(),
           boxShadow: isDragging
             ? '0 12px 30px rgba(40, 35, 29, 0.18), 0 3px 8px rgba(40, 35, 29, 0.08)'
             : undefined,
           borderRadius: isDragging || variant === 'card' ? '14px' : undefined,
           opacity: isAnimatingOut ? 0.35 : undefined,
+          paddingBottom:
+            isCompletingLocally && config.allowScaleEffects ? 8 : undefined,
         }}
       >
         {/* Custom Checkbox button with SVG path drawing and spring linkage */}
@@ -434,6 +506,10 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
           onClick={(e) => {
             e.stopPropagation();
             if (busy.current) return;
+            if (config.durations.smallTransition === 0) {
+              callbacks.current.onToggle();
+              return;
+            }
             busy.current = true;
             triggerHaptic(12);
             if (!isCompleted) setIsCompletingLocally(true);
@@ -447,9 +523,9 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
               isCompleted ? 0 : config.durations.smallTransition,
             );
           }}
-          aria-label={isEffectivelyCompleted ? '�������' : '���'}
+          aria-label={isEffectivelyCompleted ? '撤销完成' : '完成'}
           className={`task-checkbox relative w-[19px] h-[19px] mt-0.5 rounded-[5px] border-[1.5px] flex items-center justify-center shrink-0 transition-all duration-200 cursor-pointer ${
-            isCompletingLocally ? 'scale-90' : 'active:scale-90'
+            isCompletingLocally ? 'checkbox-linked' : 'active:scale-90'
           } ${
             isEffectivelyCompleted
               ? 'bg-[#6C8271] border-[#6C8271]'
@@ -536,7 +612,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
               )}
               {task.dueAt && task.project && (
                 <span className="text-[#D3C9BD] dark:text-[#5E544A] text-[10px]">
-                  ��
+                  ·
                 </span>
               )}
               {task.project && (
@@ -550,7 +626,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   );
 };

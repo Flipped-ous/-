@@ -6,3 +6,24 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local Android signing material
+android/keystore.properties
+*.jks
+*.keystore
+
+# Local SDK, IDE and build caches
+android/local.properties
+**/.gradle/
+**/.kotlin/
+**/.idea/
+signing/
+*.apk
+*.aab
+
+# Generated design previews and local QA fixtures
+.aistudio/
+/audit-probes.mjs
+/audit-runtime.mjs
+/qa-export.mjs
+/qa-backup.json

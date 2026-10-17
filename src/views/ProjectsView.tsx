@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import type { Project, Task } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useMotion } from '../motion/MotionProvider.tsx';
 import { useDialog } from '../hooks/useDialog.ts';
 import { formatDueLabel } from '../utils/taskLogic.ts';
@@ -27,6 +27,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     'all' | 'active' | 'paused' | 'archived'
   >('all');
   const [expandedId, setExpandedId] = useState<string | null>('proj-1');
+  const [recentId, setRecentId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -43,6 +44,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const archivedCount = projects.filter((p) => p.status === 'archived').length;
 
   const toggleExpand = (id: string) => {
+    setRecentId(id);
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
@@ -131,27 +133,52 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <motion.article
               layout={config.allowScaleEffects}
               layoutId={
-                config.allowParallax ? `project-${project.id}` : undefined
+                config.allowScaleEffects ? `project-${project.id}` : undefined
               }
               transition={{
                 layout: { duration: config.durations.listReflow / 1000 },
               }}
+              animate={{ y: isExpanded && config.level === 'rich' ? -2 : 0 }}
+              data-stacked={
+                config.level === 'rich' &&
+                (project.id === recentId ||
+                  project.id ===
+                    projects.find((p) => p.status === 'active')?.id)
+                  ? 'true'
+                  : undefined
+              }
+              data-expanded={isExpanded}
               key={project.id}
-              className="paper-card rounded-[16px] bg-white dark:bg-[#27221E] overflow-hidden transition-all duration-300"
+              className="paper-card project-folder rounded-[16px] bg-white dark:bg-[#27221E] transition-shadow duration-300"
             >
               {/* Card Header row */}
               <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleExpand(project.id);
+                  }
+                }}
                 onClick={() => toggleExpand(project.id)}
-                className="p-3.5 cursor-pointer hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 transition-colors"
+                className="p-3.5 rounded-[16px] cursor-pointer hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 transition-colors"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[20px] text-[#A55340] dark:text-[#C76E59]">
+                    <motion.span
+                      layout={config.allowScaleEffects ? 'position' : false}
+                      className="material-symbols-outlined text-[20px] text-[#A55340] dark:text-[#C76E59]"
+                    >
                       folder
-                    </span>
-                    <h3 className="text-[15px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
+                    </motion.span>
+                    <motion.h3
+                      layout={config.allowScaleEffects ? 'position' : false}
+                      className="text-[15px] font-bold text-[#28231D] dark:text-[#EDE6DE]"
+                    >
                       {project.name}
-                    </h3>
+                    </motion.h3>
                   </div>
 
                   {/* Status Badge */}
@@ -194,114 +221,160 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
 
               {/* Expanded details container with physical paper unfold */}
-              <div className={`accordion-grid ${isExpanded ? 'expanded' : ''}`}>
-                <div className="accordion-inner">
-                  <div className="px-3.5 pb-3.5 pt-2 bg-[#FAF6EF]/50 dark:bg-[#2C2723]/60 border-t border-[#746B61]/10 flex flex-col gap-3">
-                    {/* Dynamic Project Tasks Checklist (linked directly to global tasks) */}
+              <AnimatePresence initial={false}>
+                {isExpanded && (
+                  <motion.div
+                    key="details"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{
+                      duration: config.allowScaleEffects
+                        ? 0.35
+                        : config.durations.smallTransition / 1000,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="overflow-hidden rounded-b-[16px]"
+                  >
                     <div>
-                      <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-1.5 font-medium">
-                        <span className="flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px] text-[#6C8271]">
-                            task_alt
-                          </span>
-                          项目待办清单 (<AnimatedNumber value={pendingCount} />{' '}
-                          待办)
-                        </span>
-                        <span className="text-[11px] opacity-75">
-                          共 <AnimatedNumber value={projectTasks.length} /> 项
-                        </span>
-                      </div>
-
-                      {projectTasks.length > 0 ? (
-                        <div className="flex flex-col gap-1.5">
-                          {projectTasks.map((t) => (
-                            <div
-                              key={t.id}
-                              className="bg-white dark:bg-[#342E28] rounded-xl p-2 px-2.5 flex items-center justify-between text-[12.5px] border border-[#746B61]/10 hover:border-[#A55340] transition-colors"
-                            >
-                              <div
-                                onClick={() => onToggleTask(t.id)}
-                                className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
-                              >
-                                <span
-                                  className={`w-4 h-4 rounded-[4px] border flex items-center justify-center text-[10px] shrink-0 ${
-                                    t.status === 'completed'
-                                      ? 'bg-[#6C8271] border-[#6C8271] text-white'
-                                      : 'border-[#A89D91]'
-                                  }`}
-                                >
-                                  {t.status === 'completed' && '✓'}
-                                </span>
-                                <span
-                                  className={`truncate ${
-                                    t.status === 'completed'
-                                      ? 'line-through text-[#786E64]'
-                                      : 'text-[#28231D] dark:text-[#EDE6DE]'
-                                  }`}
-                                >
-                                  {t.title}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center gap-1.5 ml-2 shrink-0">
-                                <span className="text-[11px] text-[#786E64] dark:text-[#A89E92] bg-[#F5F1E8] dark:bg-[#3E362F] px-1.5 py-0.5 rounded">
-                                  {formatDueLabel(t)}
-                                </span>
-                                {onEditTask && (
-                                  <button
-                                    type="button"
-                                    onClick={() => onEditTask(t)}
-                                    className="w-5 h-5 rounded flex items-center justify-center text-[#9E9284] hover:text-[#A55340] cursor-pointer"
-                                    title="编辑"
-                                  >
-                                    <span className="material-symbols-outlined text-[13px]">
-                                      edit
-                                    </span>
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-3 text-[12px] text-[#786E64]/70 bg-white/50 dark:bg-[#342E28]/50 rounded-xl">
-                          暂无分配至此项目的任务
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Associated Documents */}
-                    {project.docs && project.docs.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-1.5 font-medium">
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[14px] text-[#A55340]">
-                              description
-                            </span>
-                            关联知识与资料
-                          </span>
-                          <span className="text-[11px] opacity-75">
-                            {docCount} 份
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {project.docs.map((doc, i) => (
-                            <div
-                              key={i}
-                              className="text-[11.5px] bg-white dark:bg-[#342E28] px-2.5 py-1 rounded-lg border border-[#746B61]/10 text-[#786E64] dark:text-[#A89E92] flex items-center gap-1 shadow-2xs"
-                            >
-                              <span className="material-symbols-outlined text-[13px] text-[#786E64]">
-                                attach_file
+                      <div className="px-3.5 pb-3.5 pt-2 bg-[#FAF6EF]/50 dark:bg-[#2C2723]/60 border-t border-[#746B61]/10 flex flex-col gap-3">
+                        {/* Dynamic Project Tasks Checklist (linked directly to global tasks) */}
+                        <div>
+                          <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-1.5 font-medium">
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px] text-[#6C8271]">
+                                task_alt
                               </span>
-                              <span>{doc}</span>
+                              项目待办清单 (
+                              <AnimatedNumber value={pendingCount} /> 待办)
+                            </span>
+                            <span className="text-[11px] opacity-75">
+                              共 <AnimatedNumber value={projectTasks.length} />{' '}
+                              项
+                            </span>
+                          </div>
+
+                          {projectTasks.length > 0 ? (
+                            <div className="flex flex-col gap-1.5">
+                              {projectTasks.map((t, i) => (
+                                <motion.div
+                                  layout={
+                                    config.allowScaleEffects
+                                      ? 'position'
+                                      : false
+                                  }
+                                  layoutId={
+                                    config.allowScaleEffects
+                                      ? `task-surface-${t.id}`
+                                      : undefined
+                                  }
+                                  initial={{
+                                    opacity: 0,
+                                    y: config.allowScaleEffects ? 4 : 0,
+                                  }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{
+                                    duration:
+                                      config.durations.smallTransition / 1000,
+                                    delay: config.allowScaleEffects
+                                      ? Math.min(i, 4) * 0.025
+                                      : 0,
+                                  }}
+                                  key={t.id}
+                                  className="bg-white dark:bg-[#342E28] rounded-xl p-2 px-2.5 flex items-center justify-between text-[12.5px] border border-[#746B61]/10 hover:border-[#A55340] transition-colors"
+                                >
+                                  <div
+                                    onClick={() => onToggleTask(t.id)}
+                                    className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+                                  >
+                                    <span
+                                      className={`w-4 h-4 rounded-[4px] border flex items-center justify-center text-[10px] shrink-0 ${
+                                        t.status === 'completed'
+                                          ? 'bg-[#6C8271] border-[#6C8271] text-white'
+                                          : 'border-[#A89D91]'
+                                      }`}
+                                    >
+                                      {t.status === 'completed' && '✓'}
+                                    </span>
+                                    <span
+                                      className={`truncate ${
+                                        t.status === 'completed'
+                                          ? 'line-through text-[#786E64]'
+                                          : 'text-[#28231D] dark:text-[#EDE6DE]'
+                                      }`}
+                                    >
+                                      {t.title}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 ml-2 shrink-0">
+                                    <span className="text-[11px] text-[#786E64] dark:text-[#A89E92] bg-[#F5F1E8] dark:bg-[#3E362F] px-1.5 py-0.5 rounded">
+                                      {formatDueLabel(t)}
+                                    </span>
+                                    {onEditTask && (
+                                      <button
+                                        type="button"
+                                        onClick={() => onEditTask(t)}
+                                        className="w-5 h-5 rounded flex items-center justify-center text-[#9E9284] hover:text-[#A55340] cursor-pointer"
+                                        title="编辑"
+                                      >
+                                        <span className="material-symbols-outlined text-[13px]">
+                                          edit
+                                        </span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </motion.div>
+                              ))}
                             </div>
-                          ))}
+                          ) : (
+                            <div className="text-center py-3 text-[12px] text-[#786E64]/70 bg-white/50 dark:bg-[#342E28]/50 rounded-xl">
+                              暂无分配至此项目的任务
+                            </div>
+                          )}
                         </div>
+
+                        {/* Associated Documents */}
+                        {project.docs && project.docs.length > 0 && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{
+                              duration: config.durations.smallTransition / 1000,
+                              delay: config.allowScaleEffects ? 0.12 : 0,
+                            }}
+                          >
+                            <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-1.5 font-medium">
+                              <span className="flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[14px] text-[#A55340]">
+                                  description
+                                </span>
+                                关联知识与资料
+                              </span>
+                              <span className="text-[11px] opacity-75">
+                                {docCount} 份
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {project.docs.map((doc, i) => (
+                                <div
+                                  key={i}
+                                  className="text-[11.5px] bg-white dark:bg-[#342E28] px-2.5 py-1 rounded-lg border border-[#746B61]/10 text-[#786E64] dark:text-[#A89E92] flex items-center gap-1 shadow-2xs"
+                                >
+                                  <span className="material-symbols-outlined text-[13px] text-[#786E64]">
+                                    attach_file
+                                  </span>
+                                  <span>{doc}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.article>
           );
         })}

@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useDialog } from '../hooks/useDialog.ts';
+import { ScheduleWheels } from './WheelPicker.tsx';
+import { TimeField } from './TimeField.tsx';
 import { useMotion } from '../motion/MotionProvider.tsx';
 import { localDateValue, quickDate, buildDueAt } from '../utils/taskEdit.ts';
 import type { PriorityLevel, Task, Project } from '../types/index.ts';
@@ -20,7 +22,7 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
   onSave,
   taskToEdit = null,
   projects = [],
-  defaultProject = '�������� Android �ͻ���',
+  defaultProject = '今日有序 Android 客户端',
 }) => {
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
@@ -29,9 +31,17 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
     'today' | 'tomorrow' | 'weekend' | 'none' | 'custom'
   >('today');
   const [time, setTime] = useState('');
+  const [timeError, setTimeError] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => quickDate('today'));
   const [scheduleChanged, setScheduleChanged] = useState(false);
   const config = useMotion();
+  const [saved, setSaved] = useState(false);
+  const [wheel, setWheel] = useState<'date' | null>(null);
+  const submitted = useRef(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  useEffect(() => () => clearTimeout(closeTimer.current), []);
   useDialog(isOpen, onClose);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedProjectName, setSelectedProjectName] =
@@ -42,6 +52,11 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setScheduleChanged(false);
+    setTimeError(false);
+    setSaved(false);
+    submitted.current = false;
+    setWheel(null);
+    clearTimeout(closeTimer.current);
     if (taskToEdit) {
       setTitle(taskToEdit.title || '');
       setNote(taskToEdit.note || '');
@@ -80,12 +95,21 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || submitted.current) return;
+    if (dateOption !== 'none' && time && !/^(?:[01]?\d|2[0-3]):[0-5]?\d$/.test(time)) {
+      setTimeError(true);
+      setShowAdvanced(true);
+      return;
+    }
+    submitted.current = true;
 
+    const normalizedTime = time && dateOption !== 'none'
+      ? time.split(':').map((part) => part.padStart(2, '0')).join(':')
+      : '';
     const targetDueAt =
       taskToEdit && !scheduleChanged
         ? taskToEdit.dueAt
-        : buildDueAt(dateOption === 'none' ? '' : selectedDate, time);
+        : buildDueAt(dateOption === 'none' ? '' : selectedDate, normalizedTime);
 
     onSave({
       ...(taskToEdit ? { id: taskToEdit.id } : {}),
@@ -93,16 +117,16 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
       note: note.trim() || undefined,
       priority,
       dueAt: targetDueAt,
-      dueTime: time || undefined,
+      dueTime: normalizedTime || undefined,
       dueCategory: undefined,
       dueLabel: undefined,
       projectId: selectedProjectId || undefined,
       project: selectedProjectName,
       badgeLabel:
         priority === 'urgent'
-          ? '�ص�'
+          ? '重点'
           : priority === 'important'
-            ? '��Ҫ'
+            ? '重要'
             : undefined,
       badgeType:
         priority === 'urgent'
@@ -112,10 +136,18 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
             : 'gray',
     });
 
-    onClose();
+    if (config.durations.smallTransition === 0) {
+      onClose();
+      return;
+    }
+    setSaved(true);
+    closeTimer.current = setTimeout(
+      onClose,
+      config.durations.smallTransition ? 210 : 0,
+    );
   };
 
-  const projectList = [{ id: '', name: 'δ������Ŀ' }, ...projects];
+  const projectList = [{ id: '', name: '未归属项目' }, ...projects];
 
   return (
     <AnimatePresence>
@@ -135,9 +167,15 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
 
           {/* Bottom Sheet Drawer */}
           <motion.div
+            layoutId={
+              taskToEdit && config.allowScaleEffects
+                ? `task-surface-${taskToEdit.id}`
+                : undefined
+            }
+            layout={config.allowScaleEffects}
             role="dialog"
             aria-modal="true"
-            aria-label={taskToEdit ? '�༭����' : '�½�����'}
+            aria-label={taskToEdit ? '编辑待办' : '新建待办'}
             initial={{ y: config.allowScaleEffects ? 32 : 0, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: config.allowScaleEffects ? 32 : 0, opacity: 0 }}
@@ -145,9 +183,10 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
               duration: config.durations.bottomSheet / 1000,
               ease: [0.2, 0.9, 0.3, 1],
             }}
-            className="bottom-sheet relative w-full max-w-md bg-[#FDFCFA] dark:bg-[#27221E] rounded-t-[24px] shadow-[0_-8px_30px_rgba(60,50,40,0.12)] border-t border-[#746B61]/15 p-5 pb-8 z-10 flex flex-col gap-3.5 transform transition-transform duration-300 animate-in slide-in-from-bottom max-h-[90dvh] overflow-hidden no-scrollbar"
+            className="bottom-sheet paper-glass relative w-full max-w-md bg-[#FDFCFA] dark:bg-[#27221E] rounded-t-[24px] shadow-[0_-8px_30px_rgba(60,50,40,0.12)] border-t border-[#746B61]/15 p-5 pb-8 z-10 flex flex-col gap-3.5 transform transition-transform duration-300 animate-in slide-in-from-bottom max-h-[90dvh] overflow-hidden no-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="sheet-air" aria-hidden="true" />
             {/* Grab Handle */}
             <div className="w-10 h-1 bg-[#D3C9BD] dark:bg-[#5E544A] rounded-full mx-auto -mt-1 opacity-70" />
 
@@ -155,18 +194,18 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-[17px] font-semibold text-[#28231D] dark:text-[#EDE6DE]">
-                  {taskToEdit ? '�༭����' : '�½�����'}
+                  {taskToEdit ? '编辑待办' : '新建待办'}
                 </h2>
                 <p className="text-[12px] text-[#786E64] dark:text-[#A89E92] mt-0.5">
                   {taskToEdit
-                    ? '�޼�֦Ҷ��ʹ��������'
-                    : '��ס��ͷ�£�д�¼��ͻ�'}
+                    ? '修剪枝叶，使条理分明'
+                    : '记住心头事，写下即释怀'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="�ر�"
+                aria-label="关闭"
                 className="w-7 h-7 rounded-full bg-[#F5F1E8] dark:bg-[#342E28] text-[#786E64] dark:text-[#A89E92] hover:text-[#28231D] dark:hover:text-[#EDE6DE] flex items-center justify-center cursor-pointer transition-colors"
               >
                 <span className="material-symbols-outlined text-[18px]">
@@ -184,30 +223,34 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                 {/* Title */}
                 <div>
                   <label className="block text-[13px] font-medium text-[#28231D] dark:text-[#EDE6DE] mb-1.5">
-                    ��������
+                    待办事项
                   </label>
-                  <input
-                    type="text"
-                    autoFocus
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    aria-label="��������"
-                    placeholder="���磺����������д�½�������"
-                    className="w-full text-[14.5px] bg-[#F5F1E8]/70 dark:bg-[#342E28] text-[#28231D] dark:text-[#EDE6DE] rounded-xl px-3.5 py-2.5 border border-[#746B61]/15 focus:border-[#A55340] focus:bg-white dark:focus:bg-[#3B342E] outline-none transition-all placeholder:text-[#9E9284]"
-                  />
+                  <motion.div
+                    layout={config.allowScaleEffects ? 'position' : false}
+                  >
+                    <input
+                      type="text"
+                      autoFocus
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      aria-label="待办事项"
+                      placeholder="例如：整理茶桌并写下今日所悟…"
+                      className="w-full text-[14.5px] bg-[#F5F1E8]/70 dark:bg-[#342E28] text-[#28231D] dark:text-[#EDE6DE] rounded-xl px-3.5 py-2.5 border border-[#746B61]/15 focus:border-[#A55340] focus:bg-white dark:focus:bg-[#3B342E] outline-none transition-all placeholder:text-[#9E9284]"
+                    />
+                  </motion.div>
                 </div>
 
                 {/* Note / Memo */}
                 <div>
                   <label className="block text-[12px] font-medium text-[#786E64] dark:text-[#A89E92] mb-1">
-                    ��Ҫ˵�����ľ�
+                    简要说明与心境
                   </label>
                   <textarea
                     rows={2}
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    aria-label="��ע"
-                    placeholder="���Ӳ���ϸ�ڡ�ע��Ҫ������ľ���"
+                    aria-label="备注"
+                    placeholder="添加补充细节、注意要点或当下心境…"
                     className="w-full text-[13px] bg-[#F5F1E8]/50 dark:bg-[#342E28] text-[#28231D] dark:text-[#EDE6DE] rounded-xl px-3.5 py-2 border border-[#746B61]/12 focus:border-[#A55340] focus:bg-white dark:focus:bg-[#3B342E] outline-none transition-all placeholder:text-[#9E9284] resize-none"
                   />
                 </div>
@@ -215,7 +258,7 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                 {/* Importance Level */}
                 <div>
                   <label className="block text-[12px] font-medium text-[#786E64] dark:text-[#A89E92] mb-1.5">
-                    ��Ҫ�̶�
+                    重要程度
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     <button
@@ -227,7 +270,7 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                           : 'bg-[#F5F1E8]/60 dark:bg-[#342E28] text-[#786E64] dark:text-[#A89E92] border-transparent hover:bg-[#EBE4D6]'
                       }`}
                     >
-                      ��������Ҫ
+                      紧急且重要
                     </button>
                     <button
                       type="button"
@@ -238,7 +281,7 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                           : 'bg-[#F5F1E8]/60 dark:bg-[#342E28] text-[#786E64] dark:text-[#A89E92] border-transparent hover:bg-[#EBE4D6]'
                       }`}
                     >
-                      ��Ҫ������
+                      重要不紧急
                     </button>
                     <button
                       type="button"
@@ -249,7 +292,7 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                           : 'bg-[#F5F1E8]/60 dark:bg-[#342E28] text-[#786E64] dark:text-[#A89E92] border-transparent hover:bg-[#EBE4D6]'
                       }`}
                     >
-                      �ճ���ͨ
+                      日常普通
                     </button>
                   </div>
                 </div>
@@ -263,8 +306,8 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                   >
                     <span>
                       {showAdvanced
-                        ? '������������Ŀ����'
-                        : '+ �������ڡ�����ʱ���������Ŀ'}
+                        ? '收起排期与项目设置'
+                        : '+ 设置排期、具体时间与归属项目'}
                     </span>
                     <span className="material-symbols-outlined text-[15px]">
                       {showAdvanced ? 'expand_less' : 'expand_more'}
@@ -276,14 +319,14 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                       {/* Date quick pills */}
                       <div>
                         <span className="text-[11.5px] text-[#786E64] dark:text-[#A89E92] block mb-1">
-                          ��������
+                          排期日期
                         </span>
                         <div className="flex flex-wrap gap-1.5">
                           {[
-                            { id: 'today', label: '����' },
-                            { id: 'tomorrow', label: '����' },
-                            { id: 'weekend', label: '������' },
-                            { id: 'none', label: '��ʱ (δ����)' },
+                            { id: 'today', label: '今天' },
+                            { id: 'tomorrow', label: '明天' },
+                            { id: 'weekend', label: '本周六' },
+                            { id: 'none', label: '随时 (未安排)' },
                           ].map((d) => (
                             <button
                               key={d.id}
@@ -313,7 +356,7 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                           ))}
                         </div>
                         <input
-                          aria-label="��������"
+                          aria-label="排期日期"
                           type="date"
                           value={selectedDate}
                           onInput={(event) => {
@@ -334,33 +377,48 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                         />
                       </div>
 
+                      {wheel === 'date' && (
+                        <ScheduleWheels
+                          kind="date"
+                          date={selectedDate}
+                          time={time}
+                          onDate={(value) => {
+                            setSelectedDate(value);
+                            setDateOption('custom');
+                            setScheduleChanged(true);
+                          }}
+                          onTime={setTime}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        className="wheel-trigger"
+                        aria-expanded={wheel === 'date'}
+                        onClick={() =>
+                          setWheel(wheel === 'date' ? null : 'date')
+                        }
+                      >
+                        日期滚轮
+                      </button>
                       {/* Specific Time Picker */}
                       {dateOption !== 'none' && (
                         <div>
                           <span className="text-[11.5px] text-[#786E64] dark:text-[#A89E92] block mb-1">
-                            ����ʱ�� (��ѡ)
+                            具体时刻 (可选)
                           </span>
-                          <input
-                            aria-label="����ʱ��"
-                            type="time"
-                            value={time}
-                            onInput={(event) => {
-                              setTime(event.currentTarget.value);
-                              setScheduleChanged(true);
-                            }}
-                            onChange={(e) => {
-                              setTime(e.target.value);
-                              setScheduleChanged(true);
-                            }}
-                            className="text-[13px] bg-[#F5F1E8]/70 dark:bg-[#342E28] text-[#28231D] dark:text-[#EDE6DE] px-3 py-1.5 rounded-lg border border-[#746B61]/15 outline-none focus:border-[#A55340]"
-                          />
+                          <TimeField value={time} onChange={(value) => {
+                            setTime(value);
+                            setTimeError(false);
+                            setScheduleChanged(true);
+                          }} />
+                          {timeError && <p role="alert" className="mt-1.5 text-[11px] text-[#A55340]">请填写完整且有效的小时和分钟</p>}
                         </div>
                       )}
 
                       {/* Project selection */}
                       <div>
                         <span className="text-[11.5px] text-[#786E64] dark:text-[#A89E92] block mb-1">
-                          ������Ŀ
+                          归属项目
                         </span>
                         <div className="flex flex-wrap gap-1.5">
                           {projectList.map((p) => (
@@ -395,15 +453,31 @@ export const AddTaskSheet: React.FC<AddTaskSheetProps> = ({
                   onClick={onClose}
                   className="h-9 px-4 rounded-full text-[13px] font-medium text-[#786E64] dark:text-[#A89E92] hover:bg-[#F5F1E8] dark:hover:bg-[#342E28] cursor-pointer transition-colors"
                 >
-                  ȡ��
+                  取消
                 </button>
-                <button
+                <motion.button
+                  whileTap={
+                    config.allowScaleEffects ? { scale: 0.97 } : undefined
+                  }
+                  animate={{
+                    backgroundColor: saved ? '#6C8271' : '#A55340',
+                    scale: 1,
+                  }}
+                  transition={{ duration: config.durations.tapFeedback / 1000 }}
                   type="submit"
-                  disabled={!title.trim()}
+                  disabled={!title.trim() || saved}
                   className="h-9 px-5 rounded-full bg-[#A55340] hover:bg-[#873C2A] text-white text-[13px] font-medium tracking-wide shadow-sm active:scale-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {taskToEdit ? '�����޸�' : '�������'}
-                </button>
+                  <span aria-live="polite">
+                    {saved
+                      ? taskToEdit
+                        ? '✓ 已保存'
+                        : '✓ 已添入'
+                      : taskToEdit
+                        ? '保存修改'
+                        : '添入待办'}
+                  </span>
+                </motion.button>
               </div>
             </form>
           </motion.div>

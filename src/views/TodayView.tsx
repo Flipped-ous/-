@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { useMotion } from '../motion/MotionProvider.tsx';
 import type { Task, DueCategory } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
 import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
+import { FilterTransition } from '../motion/FilterTransition.tsx';
 
 interface TodayViewProps {
   tasks: Task[];
@@ -29,6 +30,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
 }) => {
   const config = useMotion();
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [filterDirection, setFilterDirection] = useState(1);
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(true);
 
   // Filter tasks
@@ -78,7 +80,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
       {/* Overview stats & Subtitle Banner */}
       <motion.div
-        layoutId={config.allowParallax ? 'task-summary' : undefined}
+        layoutId={config.level === 'rich' ? 'task-summary' : undefined}
         transition={{ duration: config.durations.pageTransition / 1000 }}
         className="flex items-baseline justify-between mb-3.5"
       >
@@ -110,91 +112,107 @@ export const TodayView: React.FC<TodayViewProps> = ({
       <SegmentedControl
         className="mb-3.5"
         activeId={filter}
-        onChange={(val) => setFilter(val as any)}
+        onChange={(value) => {
+          if (value === filter) return;
+          const order = ['all', 'pending', 'completed'];
+          setFilterDirection(order.indexOf(value) > order.indexOf(filter) ? 1 : -1);
+          setFilter(value);
+        }}
         options={[
           { id: 'all', label: '全部', count: totalCount },
           { id: 'pending', label: '待完成', count: pendingTasks.length },
-          { id: 'completed', label: '已完成', count: completedCount },
+          {
+            id: 'completed',
+            label: '已完成',
+            count: completedCount,
+            motionId: 'brand-completed',
+          },
         ]}
       />
 
-      {/* Pending Tasks List */}
-      <div
-        role="list"
-        data-drop-category="today"
-        className="flex flex-col gap-1 transition-all duration-300"
-      >
-        {displayedPending.map((task, idx) => (
-          <SwipeableTaskItem
-            key={task.id}
-            task={task}
-            index={idx}
-            group="today-pending"
-            variant="card"
-            showDetails={true}
-            onToggle={() => onToggleTask(task.id)}
-            onDelete={() => onDeleteTask?.(task.id)}
-            onEdit={onEditTask}
-            onReorder={onReorderTasks}
-          />
-        ))}
+      <FilterTransition value={filter} direction={filterDirection}>
+        {/* Pending Tasks List */}
+        <div
+          role="list"
+          data-drop-category="today"
+          className="flex flex-col gap-1 transition-all duration-300"
+        >
+          <AnimatePresence>
+            {displayedPending.map((task, idx) => (
+              <SwipeableTaskItem
+                key={task.id}
+                task={task}
+                index={idx}
+                group="today-pending"
+                variant="card"
+                showDetails={true}
+                onToggle={() => onToggleTask(task.id)}
+                onDelete={() => onDeleteTask?.(task.id)}
+                onEdit={onEditTask}
+                onReorder={onReorderTasks}
+              />
+            ))}
+          </AnimatePresence>
 
-        {displayedPending.length === 0 && displayedCompleted.length === 0 && (
-          <div className="text-center py-8 text-[13px] text-[#786E64] dark:text-[#A89E92]">
-            今日所有待办均已完成，心安神凝
-          </div>
-        )}
-      </div>
-
-      {/* Completed Section (Accordion Collapsible) */}
-      {displayedCompleted.length > 0 && filter !== 'pending' && (
-        <section className="mt-4">
-          <button
-            type="button"
-            onClick={() => setIsCompletedExpanded(!isCompletedExpanded)}
-            className="w-full flex items-center justify-between py-1.5 text-[12.5px] font-medium text-[#786E64] dark:text-[#A89E92] hover:text-[#28231D] dark:hover:text-[#EDE6DE] cursor-pointer"
-          >
-            <div className="flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[16px] text-[#6C8271]">
-                check_circle
-              </span>
-              <span className="inline-flex items-center">
-                已完成 (<AnimatedNumber value={displayedCompleted.length} />)
-              </span>
+          {displayedPending.length === 0 && displayedCompleted.length === 0 && (
+            <div className="text-center py-8 text-[13px] text-[#786E64] dark:text-[#A89E92]">
+              今日所有待办均已完成，心安神凝
             </div>
-            <span
-              className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${
-                isCompletedExpanded ? '' : '-rotate-90'
+          )}
+        </div>
+
+        {/* Completed Section (Accordion Collapsible) */}
+        {displayedCompleted.length > 0 && filter !== 'pending' && (
+          <section className="mt-4">
+            <button
+              type="button"
+              onClick={() => setIsCompletedExpanded(!isCompletedExpanded)}
+              className="w-full flex items-center justify-between py-1.5 text-[12.5px] font-medium text-[#786E64] dark:text-[#A89E92] hover:text-[#28231D] dark:hover:text-[#EDE6DE] cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-[#6C8271]">
+                  check_circle
+                </span>
+                <span className="inline-flex items-center">
+                  已完成 (<AnimatedNumber value={displayedCompleted.length} />)
+                </span>
+              </div>
+              <span
+                className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${
+                  isCompletedExpanded ? '' : '-rotate-90'
+                }`}
+              >
+                expand_more
+              </span>
+            </button>
+
+            <div
+              className={`accordion-grid mt-1.5 ${
+                isCompletedExpanded ? 'expanded' : ''
               }`}
             >
-              expand_more
-            </span>
-          </button>
-
-          <div
-            className={`accordion-grid mt-1.5 ${
-              isCompletedExpanded ? 'expanded' : ''
-            }`}
-          >
-            <div className="accordion-inner">
-              <div className="flex flex-col gap-1">
-                {displayedCompleted.map((task, idx) => (
-                  <SwipeableTaskItem
-                    key={task.id}
-                    task={task}
-                    index={idx}
-                    variant="card"
-                    showDetails={true}
-                    onToggle={() => onToggleTask(task.id)}
-                    onDelete={() => onDeleteTask?.(task.id)}
-                    onEdit={onEditTask}
-                  />
-                ))}
+              <div className="accordion-inner">
+                <div className="flex flex-col gap-1">
+                  <AnimatePresence>
+                    {displayedCompleted.map((task, idx) => (
+                      <SwipeableTaskItem
+                        key={task.id}
+                        task={task}
+                        index={idx}
+                        variant="card"
+                        showDetails={true}
+                        onToggle={() => onToggleTask(task.id)}
+                        onDelete={() => onDeleteTask?.(task.id)}
+                        onEdit={onEditTask}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
-      )}
+          </section>
+        )}
+      </FilterTransition>
     </div>
   );
 };

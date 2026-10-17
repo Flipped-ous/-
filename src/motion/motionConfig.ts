@@ -26,7 +26,7 @@ export const motionConfigs: Record<MotionLevel, MotionConfig> = {
   simple: {
     level: 'simple',
     durations: {
-      tapFeedback: 100,
+      tapFeedback: 120,
       smallTransition: 160,
       cancelSwipe: 220,
       confirmedSwipe: 280,
@@ -52,14 +52,14 @@ export const motionConfigs: Record<MotionLevel, MotionConfig> = {
       cancelSwipe: 250,
       confirmedSwipe: 300,
       listReflow: 280,
-      pageTransition: 260,
+      pageTransition: 200,
       bottomSheet: 300,
     },
     easings: {
       standard: 'cubic-bezier(0.25, 1, 0.5, 1)',
       decelerate: 'cubic-bezier(0.2, 0.9, 0.3, 1)',
       accelerate: 'cubic-bezier(0.4, 0, 1, 1)',
-      spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+      spring: 'cubic-bezier(0.22, 1, 0.36, 1)',
       bounce: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
     },
     allowParallax: false,
@@ -73,14 +73,14 @@ export const motionConfigs: Record<MotionLevel, MotionConfig> = {
       cancelSwipe: 270,
       confirmedSwipe: 330,
       listReflow: 310,
-      pageTransition: 300,
+      pageTransition: 220,
       bottomSheet: 320,
     },
     easings: {
       standard: 'cubic-bezier(0.22, 1, 0.36, 1)',
       decelerate: 'cubic-bezier(0.16, 1, 0.3, 1)',
       accelerate: 'cubic-bezier(0.4, 0, 0.7, 1)',
-      spring: 'cubic-bezier(0.34, 1.4, 0.64, 1)',
+      spring: 'cubic-bezier(0.22, 1, 0.36, 1)',
       bounce: 'cubic-bezier(0.175, 0.885, 0.32, 1.275)',
     },
     allowParallax: true,
@@ -100,4 +100,20 @@ export function getMotionConfig(
       ) as MotionConfig['durations'],
     };
   return motionConfigs[level] || motionConfigs.standard;
+}
+
+export function isStaticPage(page?: string) {
+  return page === 'today' || page === 'tasks';
+}
+
+export function getPageMotionConfig(
+  level: MotionLevel = 'standard',
+  enabled = true,
+  page?: string,
+  reduced = false,
+) {
+  return getMotionConfig(
+    reduced ? 'simple' : level,
+    enabled && !isStaticPage(page),
+  );
 }

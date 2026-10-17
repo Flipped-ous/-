@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Capacitor, SystemBars, SystemBarsStyle } from '@capacitor/core';
+import { App as NativeApp } from '@capacitor/app';
+import { exportBackupFile, NativeAppearance } from './services/native.ts';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type {
   Task,
@@ -31,6 +34,7 @@ import { migrateStorageData } from './services/migration.ts';
 import { useTasks } from './hooks/useTasks.ts';
 import { MotionProvider } from './motion/MotionProvider.tsx';
 import { AnimatePresence } from 'motion/react';
+import { revealTheme } from './motion/themeTransition.ts';
 import { PageTransition } from './motion/PageTransition.tsx';
 import {
   BottomNavigation,
@@ -75,6 +79,30 @@ export default function App() {
   const [now, setNow] = useState(() => new Date());
   const [reviewPeriod, setReviewPeriod] = useState<'week' | 'month'>('week');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const subscription = NativeApp.addListener('backButton', () => {
+      if (history.state?.dialogToken) history.back();
+      else if (activeTabRef.current !== 'today') setActiveTab('today');
+      else void NativeApp.minimizeApp();
+    });
+    return () => {
+      void subscription.then((listener) => listener.remove());
+    };
+  }, []);
+  useEffect(() => {
+    if (Capacitor.isNativePlatform())
+      void SystemBars.setStyle({
+        style:
+          settings.theme === 'dark'
+            ? SystemBarsStyle.Dark
+            : SystemBarsStyle.Light,
+      }).catch(() => {});
+    if (Capacitor.isNativePlatform())
+      void NativeAppearance.setTheme({ dark: settings.theme === 'dark' }).catch(() => {});
+  }, [settings.theme]);
 
   useEffect(() => {
     let active = true;
@@ -91,7 +119,7 @@ export default function App() {
         setHydrated(true);
       })
       .catch((error) => {
-        if (active) setStorageError(error.message || '�������ݶ�ȡʧ��');
+        if (active) setStorageError(error.message || '本地数据读取失败');
       });
     return () => {
       active = false;
@@ -159,9 +187,7 @@ export default function App() {
   };
   const handleSaveTask = (value: Partial<Task>) => {
     saveTask(value);
-    showToast(value.id ? '�ѱ����޸�' : '����������嵥');
-    setTaskToEdit(null);
-    setIsAddTaskOpen(false);
+    showToast(value.id ? '已保存修改' : '已添入待办清单');
   };
 
   // Open Edit Sheet
@@ -187,10 +213,10 @@ export default function App() {
     const nowIso = new Date().toISOString();
     const proj: Project = {
       id: crypto.randomUUID(),
-      name: newProj.name || '�½���Ŀ',
+      name: newProj.name || '新建项目',
       description: newProj.description || '',
       status: 'active',
-      statusLabel: '�� ������',
+      statusLabel: '● 进行中',
       statusType: 'sage',
       docCount: 0,
       docs: [],
@@ -198,7 +224,7 @@ export default function App() {
       updatedAt: nowIso,
     };
     setProjects((prev) => [proj, ...prev]);
-    showToast('����Ŀ�����ɹ�');
+    showToast('新项目创建成功');
   };
 
   // Add Review
@@ -207,18 +233,18 @@ export default function App() {
     const entry: ReviewEntry = {
       id: crypto.randomUUID(),
       date: new Date().toLocaleDateString('zh-CN'),
-      subDate: newEntry.subDate || '�������',
-      time: newEntry.time || '�ո�',
+      subDate: newEntry.subDate || '今日随感',
+      time: newEntry.time || '刚刚',
       wordCount: [...(newEntry.content || '')].length,
       type: newEntry.type || 'day',
-      title: newEntry.title || '�������',
+      title: newEntry.title || '今日随感',
       content: newEntry.content || '',
-      moods: newEntry.moods || ['ƽ��'],
+      moods: newEntry.moods || ['平静'],
       createdAt: nowIso,
       updatedAt: nowIso,
     };
     setReviews((prev) => [entry, ...prev]);
-    showToast('�����������¼��ī��');
+    showToast('复盘随感已收录于墨迹');
   };
 
   // Trigger LAN Sync
@@ -226,26 +252,27 @@ export default function App() {
     setDevices((prev) =>
       prev.map((d) => ({
         ...d,
-        lastSync: '�ո�',
+        lastSync: '刚刚',
         pingMs: Math.floor(Math.random() * 4) + 2,
       })),
     );
   };
 
   // Export Data JSON
-  const handleExportData = () => {
+  const handleExportData = async () => {
     const backup = createBackup(tasks, projects, reviews, settings);
-
-    const blob = new Blob([JSON.stringify(backup, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `jinri-youxu-backup-${Date.now()}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-    showToast('�ѵ����������ر��� (.json)');
+    try {
+      await exportBackupFile(JSON.stringify(backup, null, 2));
+      showToast(
+        Capacitor.isNativePlatform()
+          ? '已打开备份保存与分享'
+          : '已导出完整本地备份 (.json)',
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : '备份导出未完成，请重试',
+      );
+    }
   };
 
   // Import Data JSON
@@ -292,19 +319,19 @@ export default function App() {
         className="min-h-screen bg-[#F5F1E8] text-[#786E64] flex flex-col items-center justify-center gap-3"
         role="status"
       >
-        {storageError || '���ڶ�ȡ�������ݡ�'}
+        {storageError || '正在读取本地数据…'}
         {storageError && (
-          <button onClick={() => location.reload()}>���¶�ȡ</button>
+          <button onClick={() => location.reload()}>重新读取</button>
         )}
       </div>
     );
 
   return (
-    <MotionProvider settings={settings}>
+    <MotionProvider settings={settings} activePage={activeTab}>
       <div className="app-root min-h-screen bg-[#F5F1E8] dark:bg-[#1D1916] text-[#28231D] dark:text-[#EDE6DE] relative flex flex-col font-sans transition-colors duration-200">
         {/* 
         Extreme bottom-right corner subtle sage tint (as required: 
-        "ֻ������ҳ�漫���½ǵķǳ�С�������һ˿������β���̣�Լռ5%~10%���ǳ����")
+        "只允许在页面极右下角的非常小区域加入一丝极淡鼠尾草绿，约占5%~10%，非常柔和")
       */}
         <div className="sage-ambient-corner" />
 
@@ -337,8 +364,8 @@ export default function App() {
         )}
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col relative z-10">
-          <AnimatePresence mode="wait" initial={false}>
-            <PageTransition key={activeTab}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            <PageTransition key={activeTab} page={activeTab}>
               {activeTab === 'today' && (
                 <TodayView
                   tasks={todayTasks}
@@ -381,7 +408,7 @@ export default function App() {
                     delayed: reviewStats.delayed,
                     added: reviewStats.added,
                     topProject: reviewStats.topProject,
-                    hours: 'Ͷ����',
+                    hours: '投入中',
                   }}
                   onAddReview={handleAddReview}
                 />
@@ -394,24 +421,30 @@ export default function App() {
                   tasksCount={tasks.length}
                   projectsCount={projects.length}
                   reviewsCount={reviews.length}
-                  onToggleTheme={() => {
-                    const applyTheme = () => {
-                      setSettings((s) => ({
-                        ...s,
-                        theme: s.theme === 'light' ? 'dark' : 'light',
-                      }));
+                  onToggleTheme={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    const origin = {
+                      x: event.detail
+                        ? event.clientX
+                        : rect.left + rect.width / 2,
+                      y: event.detail
+                        ? event.clientY
+                        : rect.top + rect.height / 2,
                     };
-                    if (
-                      typeof document !== 'undefined' &&
-                      'startViewTransition' in document &&
-                      !matchMedia('(prefers-reduced-motion: reduce)').matches &&
-                      settings.motionEnabled &&
-                      settings.motion !== 'simple'
-                    ) {
-                      (document as any).startViewTransition(applyTheme);
-                    } else {
-                      applyTheme();
-                    }
+                    void revealTheme(
+                      () => {
+                        const theme =
+                          settings.theme === 'light' ? 'dark' : 'light';
+                        document.documentElement.classList.toggle(
+                          'dark',
+                          theme === 'dark',
+                        );
+                        setSettings((s) => ({ ...s, theme }));
+                      },
+                      origin,
+                      settings.motion === 'rich',
+                      settings.motionEnabled,
+                    );
                   }}
                   onChangeMotionLevel={(lvl) =>
                     setSettings((s) => ({
@@ -469,8 +502,8 @@ export default function App() {
           visible={!!deletedTaskBackup}
           message={
             deletedTaskBackup
-              ? `��ɾ����${deletedTaskBackup.task.title}��`
-              : '��ɾ������'
+              ? `已删除「${deletedTaskBackup.task.title}」`
+              : '已删除任务'
           }
           onUndo={handleUndoDelete}
           onDismiss={dismiss}
