@@ -1,12 +1,15 @@
 import type {
+  Note,
   Task,
   Project,
   ReviewEntry,
   AppSettings,
   SyncDevice,
-} from '../types/index.ts';
+} from "../types/index.ts";
+import { reviewToNote } from "../utils/notes.ts";
 
 export interface StoredData {
+  notes?: Note[];
   schemaVersion: number;
   tasks: Task[];
   projects: Project[];
@@ -16,24 +19,24 @@ export interface StoredData {
 }
 
 const validDate = (value: unknown): value is string =>
-  typeof value === 'string' && Number.isFinite(Date.parse(value));
+  typeof value === "string" && Number.isFinite(Date.parse(value));
 
 /** Converts the previous arrays/innerTasks format once, preserving IDs and timestamps. */
 export function migrateStorageData(
   raw: any,
   reference = new Date(),
 ): StoredData {
-  if (!raw || typeof raw !== 'object') throw new Error('本地数据格式损坏');
-  if (raw.schemaVersion > 2)
-    throw new Error('本地数据来自更新版本，请升级应用');
+  if (!raw || typeof raw !== "object") throw new Error("本地数据格式损坏");
+  if (raw.schemaVersion > 3)
+    throw new Error("本地数据来自更新版本，请升级应用");
   const stamp = reference.toISOString();
   const projects: Project[] = (raw.projects || []).map((p: any) => {
-    if (!p || typeof p.id !== 'string' || typeof p.name !== 'string')
-      throw new Error('项目数据格式损坏');
+    if (!p || typeof p.id !== "string" || typeof p.name !== "string")
+      throw new Error("项目数据格式损坏");
     const { innerTasks, pendingCount, completedCount, ...rest } = p;
     return {
       ...rest,
-      description: p.description || '',
+      description: p.description || "",
       docs: p.docs || [],
       createdAt: validDate(p.createdAt) ? p.createdAt : stamp,
       updatedAt: validDate(p.updatedAt) ? p.updatedAt : stamp,
@@ -45,24 +48,24 @@ export function migrateStorageData(
     ...(raw.todayTasks || []),
   ];
   for (const t of taskRows) {
-    if (!t || typeof t.id !== 'string' || typeof t.title !== 'string')
-      throw new Error('任务数据格式损坏');
+    if (!t || typeof t.id !== "string" || typeof t.title !== "string")
+      throw new Error("任务数据格式损坏");
     const project = projects.find(
       (p) => p.id === t.projectId || p.name === t.project,
     );
     let dueAt = validDate(t.dueAt) ? t.dueAt : undefined;
-    if (!dueAt && t.dueCategory && t.dueCategory !== 'none') {
+    if (!dueAt && t.dueCategory && t.dueCategory !== "none") {
       const d = new Date(reference);
       d.setDate(
         d.getDate() +
-          (t.dueCategory === 'overdue'
+          (t.dueCategory === "overdue"
             ? -1
-            : t.dueCategory === 'future'
+            : t.dueCategory === "future"
               ? 1
               : 0),
       );
-      const [h, m] = /^\d\d:\d\d$/.test(t.dueTime || '')
-        ? t.dueTime.split(':').map(Number)
+      const [h, m] = /^\d\d:\d\d$/.test(t.dueTime || "")
+        ? t.dueTime.split(":").map(Number)
         : [18, 0];
       d.setHours(h, m, 0, 0);
       dueAt = d.toISOString();
@@ -72,9 +75,9 @@ export function migrateStorageData(
       ...rest,
       dueAt,
       projectId: project?.id || t.projectId,
-      project: project?.name || t.project || '',
-      status: t.status === 'completed' ? 'completed' : 'pending',
-      priority: t.priority || 'normal',
+      project: project?.name || t.project || "",
+      status: t.status === "completed" ? "completed" : "pending",
+      priority: t.priority || "normal",
       createdAt: validDate(t.createdAt) ? t.createdAt : stamp,
       updatedAt: validDate(t.updatedAt) ? t.updatedAt : stamp,
     });
@@ -92,8 +95,8 @@ export function migrateStorageData(
         taskMap.set(id, {
           id,
           title: t.title,
-          status: t.completed ? 'completed' : 'pending',
-          priority: 'normal',
+          status: t.completed ? "completed" : "pending",
+          priority: "normal",
           projectId: p.id,
           project: p.name,
           createdAt: stamp,
@@ -109,7 +112,8 @@ export function migrateStorageData(
     updatedAt: validDate(r.updatedAt) ? r.updatedAt : stamp,
   }));
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    notes: raw.notes === undefined ? reviews.map(reviewToNote) : raw.notes,
     tasks: [...taskMap.values()],
     projects,
     reviews,

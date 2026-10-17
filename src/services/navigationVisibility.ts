@@ -6,6 +6,7 @@ export class NavigationVisibility {
   private listeners = new Set<() => void>();
 
   getSnapshot = () => this.dialogs.size > 0 || this.editing || this.keyboard;
+  isKeyboardVisible = () => this.keyboard;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };

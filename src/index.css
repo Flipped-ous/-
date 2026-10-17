@@ -70,7 +70,7 @@
   will-change: transform, opacity;
 }
 
-.paper-card:not([data-task-index]):active {
+.paper-card:not([data-task-index]):not(:has(button, input, textarea, select)):active {
   transform: scale(0.985);
 }
 

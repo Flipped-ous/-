@@ -1,5 +1,11 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
-import { navigationVisibility } from '../services/navigationVisibility.ts';
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { navigationVisibility } from "../services/navigationVisibility.ts";
+const dialogStack: string[] = [];
+if (typeof window !== "undefined")
+  window.addEventListener("popstate", () => {
+    const token = history.state?.dialogToken;
+    if (token && !dialogStack.includes(token)) history.back();
+  });
 
 /** Shared Escape/Back, focus and scroll handling; the existing sheet markup remains unchanged. */
 export function useDialog(open: boolean, close: () => void) {
@@ -12,33 +18,36 @@ export function useDialog(open: boolean, close: () => void) {
     if (!open) return;
     const viewport = () =>
       document.documentElement.style.setProperty(
-        '--dialog-height',
-        (window.visualViewport?.height || window.innerHeight) + 'px',
+        "--dialog-height",
+        (window.visualViewport?.height || window.innerHeight) + "px",
       );
     viewport();
-    window.visualViewport?.addEventListener('resize', viewport);
+    window.visualViewport?.addEventListener("resize", viewport);
     const previous = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.body.style.overflow = "hidden";
     const token = crypto.randomUUID();
-    history.pushState({ ...history.state, dialogToken: token }, '');
+    dialogStack.push(token);
+    history.pushState({ ...history.state, dialogToken: token }, "");
     let popped = false;
     const pop = () => {
+      if (history.state?.dialogToken === token || dialogStack.at(-1) !== token)
+        return;
       popped = true;
       closeRef.current();
     };
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === "Escape") {
         event.preventDefault();
         closeRef.current();
       }
-      if (event.key === 'Tab') {
+      if (event.key === "Tab") {
         const dialog = [
           ...document.querySelectorAll<HTMLElement>('[role="dialog"]'),
         ].at(-1);
         const items = [
           ...(dialog?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input, textarea, select, [tabindex="0"]',
+            'button:not(:disabled), input, textarea, select, [contenteditable="true"], [tabindex="0"]',
           ) || []),
         ].filter((el) => el.getClientRects().length > 0);
         if (!items.length) return;
@@ -53,23 +62,39 @@ export function useDialog(open: boolean, close: () => void) {
         }
       }
     };
-    const focus = requestAnimationFrame(() =>
-      document
-        .querySelector<HTMLElement>(
-          '[role="dialog"] input, [role="dialog"] textarea, [role="dialog"] button',
+    const focus = requestAnimationFrame(() => {
+      const dialog = [
+        ...document.querySelectorAll<HTMLElement>('[role="dialog"]'),
+      ].at(-1);
+      dialog
+        ?.querySelector<HTMLElement>(
+          'textarea, input:not([type="hidden"]):not([type="file"]), [contenteditable="true"], button',
         )
-        ?.focus(),
-    );
-    window.addEventListener('popstate', pop);
-    document.addEventListener('keydown', keydown);
+        ?.focus({ preventScroll: true });
+    });
+    window.addEventListener("popstate", pop);
+    document.addEventListener("keydown", keydown);
     return () => {
+      const index = dialogStack.indexOf(token);
+      if (index >= 0) dialogStack.splice(index, 1);
       cancelAnimationFrame(focus);
-      window.visualViewport?.removeEventListener('resize', viewport);
-      window.removeEventListener('popstate', pop);
-      document.removeEventListener('keydown', keydown);
+      window.visualViewport?.removeEventListener("resize", viewport);
+      window.removeEventListener("popstate", pop);
+      document.removeEventListener("keydown", keydown);
       document.body.style.overflow = overflow;
       if (!popped && history.state?.dialogToken === token) history.back();
-      previous?.focus();
+      const remaining = [
+        ...document.querySelectorAll<HTMLElement>('[role="dialog"]'),
+      ]
+        .filter((el) => el.getClientRects().length > 0)
+        .at(-1);
+      if (remaining)
+        remaining
+          .querySelector<HTMLElement>(
+            'button, textarea, [contenteditable="true"]',
+          )
+          ?.focus({ preventScroll: true });
+      else previous?.focus({ preventScroll: true });
     };
   }, [open]);
 }

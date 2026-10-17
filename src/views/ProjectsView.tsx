@@ -13,6 +13,7 @@ interface ProjectsViewProps {
   onAddProject: (project: Partial<Project>) => void;
   onToggleTask: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
+  onOpenDetail?: (project: Project) => void;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -21,6 +22,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onAddProject,
   onToggleTask,
   onEditTask,
+  onOpenDetail,
 }) => {
   const config = useMotion();
   const [filter, setFilter] = useState<
@@ -238,6 +240,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   >
                     <div>
                       <div className="px-3.5 pb-3.5 pt-2 bg-[#FAF6EF]/50 dark:bg-[#2C2723]/60 border-t border-[#746B61]/10 flex flex-col gap-3">
+                        <button type="button" className="project-detail-entry" onClick={()=>onOpenDetail?.(project)}>项目详情与相关笔记 <span aria-hidden="true">→</span></button>
                         {/* Dynamic Project Tasks Checklist (linked directly to global tasks) */}
                         <div>
                           <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-1.5 font-medium">

@@ -61,6 +61,44 @@ public class AppearancePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void prepareReminderChannels(PluginCall call) {
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            android.app.NotificationManager manager = (android.app.NotificationManager) getActivity().getSystemService(android.content.Context.NOTIFICATION_SERVICE);
+            android.app.NotificationChannel gentle = new android.app.NotificationChannel("youxu-gentle-v1", "任务温和提醒", android.app.NotificationManager.IMPORTANCE_DEFAULT);
+            gentle.setSound(null, null); gentle.enableVibration(true);
+            android.app.NotificationChannel alert = new android.app.NotificationChannel("youxu-alert-v1", "任务有声提醒", android.app.NotificationManager.IMPORTANCE_HIGH);
+            alert.setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION), new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build());
+            alert.enableVibration(true);
+            manager.createNotificationChannel(gentle); manager.createNotificationChannel(alert);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            android.content.Intent intent;
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                intent = new android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+                intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getActivity().getPackageName());
+            } else {
+                intent = new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + getActivity().getPackageName()));
+            }
+            getActivity().startActivity(intent); call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void hideKeyboard(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            android.view.inputmethod.InputMethodManager manager = (android.view.inputmethod.InputMethodManager) getActivity().getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+            android.view.View focused = getActivity().getCurrentFocus();
+            if (focused != null && manager != null) manager.hideSoftInputFromWindow(focused.getWindowToken(), 0);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
     public void setTheme(PluginCall call) {
         boolean dark = Boolean.TRUE.equals(call.getBoolean("dark", false));
         getActivity().runOnUiThread(() -> {

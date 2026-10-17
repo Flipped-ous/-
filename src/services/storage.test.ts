@@ -41,7 +41,7 @@ test('first run differs from an intentionally empty saved database', async () =>
   const restored = await loadStorageData();
   assert.deepEqual(restored?.tasks, []);
   assert.deepEqual(restored?.projects, []);
-  assert.equal(restored?.schemaVersion, 2);
+  assert.equal(restored?.schemaVersion, 3);
 });
 test('serial atomic snapshots persist the final edit, settings and mock devices', async () => {
   const task = {

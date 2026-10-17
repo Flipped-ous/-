@@ -1,30 +1,40 @@
-import { migrateStorageData, type StoredData } from './migration.ts';
+import { migrateStorageData, type StoredData } from "./migration.ts";
 
-const DB_NAME = 'jinri_youxu_db';
-const DB_VERSION = 2;
-const FALLBACK_KEY = 'jy_snapshot_v2';
-const stores = ['tasks', 'projects', 'reviews', 'settings', 'devices', 'meta'];
+const DB_NAME = "jinri_youxu_db";
+const DB_VERSION = 3;
+const FALLBACK_KEY = "jy_snapshot_v2";
+const stores = [
+  "tasks",
+  "projects",
+  "reviews",
+  "settings",
+  "devices",
+  "meta",
+  "notes",
+  "attachments",
+  "syncMeta",
+];
 let connection: Promise<IDBDatabase> | null = null;
 let writes: Promise<void> = Promise.resolve();
 let lastSavedMs = 0;
 
-function openDB(): Promise<IDBDatabase> {
+export function openDB(): Promise<IDBDatabase> {
   if (connection) return connection;
   connection = new Promise<IDBDatabase>((resolve, reject) => {
-    if (typeof indexedDB === 'undefined')
-      return reject(new Error('IndexedDB 不可用'));
+    if (typeof indexedDB === "undefined")
+      return reject(new Error("IndexedDB 不可用"));
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       for (const name of stores)
         if (!db.objectStoreNames.contains(name))
           db.createObjectStore(name, {
-            keyPath: name === 'settings' || name === 'meta' ? 'key' : 'id',
+            keyPath: name === "settings" || name === "meta" ? "key" : "id",
           });
     };
-    request.onblocked = () => reject(new Error('请关闭其他旧版页面后重新打开'));
+    request.onblocked = () => reject(new Error("请关闭其他旧版页面后重新打开"));
     request.onerror = () =>
-      reject(request.error || new Error('无法打开本地数据库'));
+      reject(request.error || new Error("无法打开本地数据库"));
     request.onsuccess = () => {
       request.result.onversionchange = () => {
         request.result.close();
@@ -47,16 +57,16 @@ function fallbackRead(): StoredData | null {
   }
   const saved = localStorage.getItem(FALLBACK_KEY);
   if (saved !== null) return migrateStorageData(JSON.parse(saved));
-  const names = ['tasks', 'projects', 'reviews', 'settings', 'devices'];
+  const names = ["tasks", "projects", "reviews", "settings", "devices"];
   const old = Object.fromEntries(
-    names.map((name) => [name, localStorage.getItem('jy_' + name)]),
+    names.map((name) => [name, localStorage.getItem("jy_" + name)]),
   );
   if (Object.values(old).every((value) => value === null)) return null;
   return migrateStorageData(
     Object.fromEntries(
       Object.entries(old).map(([name, value]) => [
         name,
-        value === null ? (name === 'settings' ? null : []) : JSON.parse(value),
+        value === null ? (name === "settings" ? null : []) : JSON.parse(value),
       ]),
     ),
   );
@@ -71,11 +81,11 @@ export async function loadStorageData(): Promise<StoredData | null> {
     const fallback = fallbackRead();
     if (fallback) return fallback;
     // A supported database that failed to open must not be overwritten with seed data.
-    if (typeof indexedDB !== 'undefined') throw error;
+    if (typeof indexedDB !== "undefined") throw error;
     return null;
   }
   const raw = await new Promise<any>((resolve, reject) => {
-    const tx = db.transaction(stores, 'readonly');
+    const tx = db.transaction(stores, "readonly");
     const result: Record<string, any> = {};
     for (const name of stores) {
       const req = tx.objectStore(name).getAll();
@@ -85,15 +95,15 @@ export async function loadStorageData(): Promise<StoredData | null> {
     }
     tx.oncomplete = () => resolve(result);
     tx.onerror = tx.onabort = () =>
-      reject(tx.error || new Error('读取本地数据失败'));
+      reject(tx.error || new Error("读取本地数据失败"));
   });
-  const meta = raw.meta.find((row: any) => row.key === 'snapshot');
+  const meta = raw.meta.find((row: any) => row.key === "snapshot");
   const settings =
-    raw.settings.find((row: any) => row.key === 'appSettings')?.value || null;
+    raw.settings.find((row: any) => row.key === "appSettings")?.value || null;
   if (
     !meta &&
     !settings &&
-    ['tasks', 'projects', 'reviews', 'devices'].every(
+    ["tasks", "projects", "reviews", "devices"].every(
       (name) => raw[name].length === 0,
     )
   )
@@ -101,8 +111,29 @@ export async function loadStorageData(): Promise<StoredData | null> {
   const snapshot = migrateStorageData({
     ...raw,
     schemaVersion: meta?.schemaVersion || 1,
+    notes: (meta?.schemaVersion || 1) < 3 ? undefined : raw.notes,
     settings,
   });
+  if ((meta?.schemaVersion || 1) < 3) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(["meta", "notes"], "readwrite");
+      tx.objectStore("meta").put({
+        key: "before-notes-v3",
+        value: { ...raw, settings },
+        savedAt: new Date().toISOString(),
+      });
+      for (const note of snapshot.notes || [])
+        tx.objectStore("notes").put(note);
+      tx.objectStore("meta").put({
+        ...meta,
+        key: "snapshot",
+        schemaVersion: 3,
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () =>
+        reject(tx.error || new Error("笔记升级失败，原始数据已保留"));
+    });
+  }
   // A previously unavailable IndexedDB may have left a newer, complete fallback snapshot.
   let fallbackRaw: string | null = null;
   try {
@@ -110,7 +141,7 @@ export async function loadStorageData(): Promise<StoredData | null> {
   } catch {}
   if (fallbackRaw) {
     const fallback = JSON.parse(fallbackRaw);
-    if (fallback.savedAt > (meta?.savedAt || ''))
+    if (fallback.savedAt > (meta?.savedAt || ""))
       return migrateStorageData(fallback);
   }
   return snapshot;
@@ -121,7 +152,7 @@ export function saveStorageData(data: StoredData): Promise<void> {
   lastSavedMs = Math.max(Date.now(), lastSavedMs + 1);
   const snapshot = structuredClone({
     ...data,
-    schemaVersion: 2,
+    schemaVersion: 3,
     savedAt: new Date(lastSavedMs).toISOString(),
   });
   const operation = writes
@@ -130,29 +161,70 @@ export function saveStorageData(data: StoredData): Promise<void> {
       try {
         const db = await openDB();
         await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction(stores, 'readwrite');
+          const tx = db.transaction(
+            [
+              "tasks",
+              "projects",
+              "reviews",
+              "devices",
+              "settings",
+              "meta",
+              "syncMeta",
+            ],
+            "readwrite",
+          );
+          for (const entity of ["tasks", "projects"] as const) {
+            const request = tx.objectStore(entity).getAll();
+            request.onsuccess = () => {
+              const before = new Map(
+                request.result.map((item: any) => [item.id, item]),
+              );
+              const after = new Map(
+                snapshot[entity].map((item) => [item.id, item]),
+              );
+              for (const id of new Set([...before.keys(), ...after.keys()])) {
+                const changed =
+                  JSON.stringify(before.get(id)) !==
+                  JSON.stringify(after.get(id));
+                const key = `${entity}:${id}`;
+                const row = tx.objectStore("syncMeta").get(key);
+                row.onsuccess = () => {
+                  if (changed || !row.result)
+                    tx.objectStore("syncMeta").put({
+                      id: key,
+                      entity,
+                      entityId: id,
+                      revision: (row.result?.revision || 0) + 1,
+                      updatedAt: snapshot.savedAt,
+                      deleted: !after.has(id),
+                      value: after.get(id),
+                    });
+                };
+              }
+            };
+          }
           for (const name of [
-            'tasks',
-            'projects',
-            'reviews',
-            'devices',
+            "tasks",
+            "projects",
+            "reviews",
+            "devices",
           ] as const) {
             const store = tx.objectStore(name);
             store.clear();
             for (const item of snapshot[name]) store.put(item);
           }
-          tx.objectStore('settings').put({
-            key: 'appSettings',
+          tx.objectStore("settings").put({
+            key: "appSettings",
             value: snapshot.settings,
           });
-          tx.objectStore('meta').put({
-            key: 'snapshot',
-            schemaVersion: 2,
+          tx.objectStore("meta").put({
+            key: "snapshot",
+            schemaVersion: 3,
             savedAt: snapshot.savedAt,
           });
           tx.oncomplete = () => resolve();
           tx.onerror = tx.onabort = () =>
-            reject(tx.error || new Error('本地保存失败'));
+            reject(tx.error || new Error("本地保存失败"));
         });
         // A completed IndexedDB commit supersedes its fallback.
         try {
@@ -162,7 +234,7 @@ export function saveStorageData(data: StoredData): Promise<void> {
         try {
           localStorage.setItem(FALLBACK_KEY, JSON.stringify(snapshot));
         } catch {
-          throw new Error('本地保存失败，请导出备份并检查设备存储空间', {
+          throw new Error("本地保存失败，请导出备份并检查设备存储空间", {
             cause: error,
           });
         }
@@ -170,4 +242,7 @@ export function saveStorageData(data: StoredData): Promise<void> {
     });
   writes = operation;
   return operation;
+}
+export function flushStorageData() {
+  return writes;
 }

@@ -13,7 +13,7 @@ const tabs: { id: NavTabId; label: string; icon: string }[] = [
   { id: 'today', label: '今天', icon: 'today' },
   { id: 'tasks', label: '待办', icon: 'check_box' },
   { id: 'projects', label: '项目', icon: 'folder_open' },
-  { id: 'review', label: '复盘', icon: 'auto_stories' },
+  { id: 'review', label: '笔记', icon: 'auto_stories' },
   { id: 'more', label: '更多', icon: 'more_horiz' },
 ];
 
@@ -59,7 +59,7 @@ export const BottomNavigation: React.FC<BottomNavigationProps> = ({ activeTab, o
   return (
     <nav hidden={hidden} aria-label="底部主导航" className="fixed bottom-3 inset-x-4 z-40 max-w-sm mx-auto select-none pointer-events-auto">
       <div ref={track} className="relative flex items-center p-1.5 rounded-full paper-navigation shadow-[0_8px_30px_rgba(59,53,46,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)]"
-        style={{ backgroundColor: 'color-mix(in srgb, var(--bg-page) 93%, transparent)', border: '1px solid var(--border-pill)' }}>
+        style={{ backgroundColor: 'color-mix(in srgb, var(--bg-page) 82%, transparent)', border: '1px solid var(--border-pill)' }}>
         <div className="navigation-air" aria-hidden="true" />
         <motion.div aria-hidden="true" className="navigation-droplet absolute top-1.5 bottom-1.5 rounded-full pointer-events-none"
           style={{ left: 10, width: Math.max(0, slotWidth - 8), x, scaleX, scaleY, skewX, backgroundColor: 'color-mix(in srgb, var(--accent-terracotta) 14%, transparent)', visibility: slotWidth ? 'visible' : 'hidden' }} />

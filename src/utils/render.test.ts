@@ -5,7 +5,8 @@ import { renderToString } from 'react-dom/server';
 import { TodayView } from '../views/TodayView.tsx';
 import { TasksView } from '../views/TasksView.tsx';
 import { ProjectsView } from '../views/ProjectsView.tsx';
-import { ReviewView } from '../views/ReviewView.tsx';
+import { NotesView } from '../views/NotesView.tsx';
+import { PageTransition } from '../motion/PageTransition.tsx';
 import { MoreView } from '../views/MoreView.tsx';
 import {
   initialTasks,
@@ -34,9 +35,11 @@ test('all five populated screens render without undefined references', () => {
       onAddProject: noop,
       onToggleTask: noop,
     }),
-    React.createElement(ReviewView, {
-      reviews: initialReviews,
-      onAddReview: noop,
+    React.createElement(NotesView, {
+      projects: initialProjects,
+      tasks: initialTasks,
+      onOpen: noop,
+      onNew: noop,
     }),
     React.createElement(MoreView, {
       settings: initialSettings,
@@ -53,5 +56,13 @@ test('all five populated screens render without undefined references', () => {
       onShowToast: noop,
     }),
   ];
-  for (const screen of screens) assert.ok(renderToString(screen).length > 100);
+  for (const screen of screens) {
+    const html=renderToString(screen);
+    assert.ok(html.length > 100);
+    assert.equal(html.includes('动效系统等级'),false);
+  }
+});
+test('page transitions fade without translating content horizontally',()=>{
+  const html=renderToString(React.createElement(PageTransition,{page:'review',children:'笔记'}));
+  assert.equal(/translate|matrix\(/.test(html),false);
 });

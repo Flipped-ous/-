@@ -1,3 +1,4 @@
+import { validateNote } from './notes.ts';
 import type {
   Task,
   DueCategory,
@@ -508,7 +509,7 @@ export function validateBackupData(data: any): {
   const strings = (v: any) =>
     Array.isArray(v) && v.every((x) => typeof x === 'string');
   if (!object(data)) return fail('需为 JSON 对象');
-  if (data.schemaVersion !== 1 && data.schemaVersion !== 2)
+  if (data.schemaVersion !== 1 && data.schemaVersion !== 2 && data.schemaVersion !== 3)
     return fail('不支持的备份版本');
   if (!date(data.exportedAt)) return fail('缺少有效的导出时间');
   for (const key of ['tasks', 'projects', 'reviews']) {
@@ -573,7 +574,9 @@ export function validateBackupData(data: any): {
       }
     }
   }
+  if (data.schemaVersion === 3 && (!Array.isArray(data.notes) || !data.notes.every(validateNote) || new Set(data.notes.map((n:any)=>n.id)).size !== data.notes.length)) return fail('笔记数据格式无效');
   const projectIds = new Set(data.projects.map((p: any) => p.id));
+  if (data.schemaVersion === 3 && data.notes.some((n:any)=>n.projectId&&!projectIds.has(n.projectId))) return fail('笔记包含不存在的项目关联');
   if (data.tasks.some((t: any) => t.projectId && !projectIds.has(t.projectId)))
     return fail('备份包含不存在的项目关联');
   if (data.settings !== undefined) {
@@ -588,6 +591,7 @@ export function validateBackupData(data: any): {
         !['gentle', 'important', 'all', 'off'].includes(s.notification))
     )
       return fail('设置值无效');
+    if(s.reminderLeadMinutes!==undefined&&![0,5,10,15,30,60].includes(s.reminderLeadMinutes))return fail('提前提醒设置无效');
     if (s.syncPaused !== undefined && typeof s.syncPaused !== 'boolean')
       return fail('同步设置值无效');
     if (
@@ -598,6 +602,7 @@ export function validateBackupData(data: any): {
             'motion',
             'motionEnabled',
             'notification',
+            'reminderLeadMinutes',
             'dataSizeMb',
             'syncPaused',
           ].includes(key),
