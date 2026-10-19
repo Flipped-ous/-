@@ -25,7 +25,8 @@ import {
   restoreNotesBackup,
 } from "./notesBackup.ts";
 import { syncRepository } from "./sync.ts";
-import { initialReviews, initialSettings } from "../data/initialData.ts";
+import { initialReviews } from "../data/legacyDemoData.ts";
+import { initialSettings } from "../data/initialData.ts";
 
 Object.defineProperty(globalThis, "localStorage", {
   value: { getItem: () => null, setItem: () => {}, removeItem: () => {} },

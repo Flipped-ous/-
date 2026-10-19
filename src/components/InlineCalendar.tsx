@@ -32,13 +32,13 @@ export function InlineCalendar({ value, onChange, shortcuts: showShortcuts = tru
         {!showShortcuts && <button type="button" className="calendar-today" onClick={() => { setMonth(new Date()); onChange(today); }}>今天</button>}
         <button type="button" aria-label={week ? '上一周' : '上个月'} onClick={() => shift(-1)}><span aria-hidden="true" className="material-symbols-outlined">chevron_left</span></button>
         <button type="button" aria-label={week ? '下一周' : '下个月'} onClick={() => shift(1)}><span aria-hidden="true" className="material-symbols-outlined">chevron_right</span></button>
+        {onToggleWeek && <button type="button" aria-label={week ? '展开月历' : '收起为周历'} title={week ? '展开月历' : '收起为周历'} aria-expanded={!week} onClick={onToggleWeek}><span aria-hidden="true" className="material-symbols-outlined">{week ? 'expand_more' : 'expand_less'}</span></button>}
       </div>
       <div className="calendar-weekdays" aria-hidden="true">{'一二三四五六日'.split('').map(day => <span key={day}>{day}</span>)}</div>
       <div className="calendar-days" role="group" aria-label="选择日期">
         {days.map(day => <button key={day.value} type="button" disabled={!!minDate && day.value < minDate} aria-label={`${day.value}${dots.includes(day.value) ? '，有未完成任务' : ''}`} aria-pressed={value === day.value} aria-current={day.value === today ? 'date' : undefined} data-outside={!day.inMonth} onClick={() => onChange(day.value)}><span>{day.day}</span>{dots.includes(day.value) && <i aria-hidden="true" />}</button>)}
       </div>
     </div>
-    {onToggleWeek && <button type="button" className="calendar-collapse" aria-expanded={!week} onClick={onToggleWeek}>{week ? '展开月历' : '收起为周历'} <span aria-hidden="true">{week ? '⌄' : '⌃'}</span></button>}
   </div>;
 }
 

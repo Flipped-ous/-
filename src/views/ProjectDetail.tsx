@@ -13,6 +13,8 @@ import { NoteCard } from "./NotesView.tsx";
 import { Icon } from "../components/NoteWorkspace.tsx";
 import { SegmentedControl } from "../components/SegmentedControl.tsx";
 import { formatDueLabel } from "../utils/taskLogic.ts";
+import { belongsToProject } from '../utils/projectRelations.ts';
+import { holdBodyScroll } from '../services/bodyScrollLock.ts';
 
 export function ProjectDetail({
   project,
@@ -44,8 +46,7 @@ export function ProjectDetail({
     };
   }, []);
   useEffect(() => {
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const releaseScroll = holdBodyScroll();
     const token = crypto.randomUUID();
     history.pushState({ ...history.state, subpageToken: token }, "");
     let popped = false;
@@ -56,20 +57,32 @@ export function ProjectDetail({
     };
     window.addEventListener("popstate", pop);
     return () => {
-      document.body.style.overflow = overflow;
+      releaseScroll();
       window.removeEventListener("popstate", pop);
       if (
         !popped &&
-        history.state?.subpageToken === token &&
-        !history.state?.dialogToken
-      )
-        history.back();
+        history.state?.subpageToken === token
+      ) {
+        if (!history.state?.dialogToken) history.back();
+        else {
+          // Deleting the project closes its confirmation and parent together.
+          // Wait for the dialog's Back before removing this now-orphaned page.
+          const afterDialog = () => {
+            if (history.state?.subpageToken !== token) window.removeEventListener('popstate', afterDialog);
+            else if (!history.state?.dialogToken) {
+              window.removeEventListener('popstate', afterDialog);
+              history.back();
+            }
+          };
+          window.addEventListener('popstate', afterDialog);
+        }
+      }
     };
   }, []);
   const all = useSyncExternalStore(subscribeNotes, getNotes),
     notes = sortNotes(all.filter((n) => n.projectId === project.id));
   const rows = tasks.filter(
-      (t) => t.projectId === project.id || t.project === project.name,
+      (t) => belongsToProject(t, project),
     ),
     done = rows.filter((t) => t.status === "completed").length;
   return createPortal(

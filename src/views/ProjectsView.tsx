@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from 'motion/react';
 import { useMotion } from '../motion/MotionProvider.tsx';
 import { useDialog } from '../hooks/useDialog.ts';
 import { formatDueLabel } from '../utils/taskLogic.ts';
+import { SwipeableProject } from '../components/SwipeableProject.tsx';
+import { belongsToProject } from '../utils/projectRelations.ts';
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -14,6 +16,7 @@ interface ProjectsViewProps {
   onToggleTask: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
   onOpenDetail?: (project: Project) => void;
+  onDeleteProject?: (project: Project) => void;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -23,12 +26,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onToggleTask,
   onEditTask,
   onOpenDetail,
+  onDeleteProject,
 }) => {
   const config = useMotion();
   const [filter, setFilter] = useState<
     'all' | 'active' | 'paused' | 'archived'
   >('all');
   const [expandedId, setExpandedId] = useState<string | null>('proj-1');
+  const [swipedId, setSwipedId] = useState<string | null>(null);
   const [recentId, setRecentId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -116,12 +121,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
       {/* Project Cards Stream */}
       <div className="flex flex-col gap-3">
+        {!filteredProjects.length && <p className="text-center text-[13px] text-[#82776C] dark:text-[#B3A79B] py-10">{projects.length ? '这个分类下还没有项目' : '还没有项目，点击右上角新建'}</p>}
         {filteredProjects.map((project) => {
           const isExpanded = expandedId === project.id;
 
           // Real-time dynamic calculation from unified tasks
           const projectTasks = tasks.filter(
-            (t) => t.projectId === project.id || t.project === project.name,
+            (t) => belongsToProject(t, project),
           );
           const pendingCount = projectTasks.filter(
             (t) => t.status === 'pending',
@@ -132,6 +138,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           const docCount = project.docCount || project.docs?.length || 0;
 
           return (
+            <SwipeableProject key={project.id} name={project.name} open={swipedId === project.id}
+              onOpenChange={open => setSwipedId(current => open ? project.id : current === project.id ? null : current)}
+              onDelete={onDeleteProject ? () => onDeleteProject(project) : undefined}>
             <motion.article
               layout={config.allowScaleEffects}
               layoutId={
@@ -156,9 +165,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               {/* Card Header row */}
               <div
                 role="button"
+                data-project-swipe-handle
+                aria-keyshortcuts="ArrowLeft Delete"
                 tabIndex={0}
                 aria-expanded={isExpanded}
                 onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     toggleExpand(project.id);
@@ -168,7 +180,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 className="p-3.5 rounded-[16px] cursor-pointer hover:bg-[#FAF6EF]/60 dark:hover:bg-[#322C26]/40 transition-colors"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <motion.span
                       layout={config.allowScaleEffects ? 'position' : false}
                       className="material-symbols-outlined text-[20px] text-[#A55340] dark:text-[#C76E59]"
@@ -177,13 +189,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     </motion.span>
                     <motion.h3
                       layout={config.allowScaleEffects ? 'position' : false}
-                      className="text-[15px] font-bold text-[#28231D] dark:text-[#EDE6DE]"
+                      className="text-[15px] font-bold text-[#28231D] dark:text-[#EDE6DE] min-w-0 break-words"
                     >
                       {project.name}
                     </motion.h3>
                   </div>
 
-                  {/* Status Badge */}
+                  <div className="project-card-actions">
                   <span
                     className={`text-[11px] px-2 py-0.5 rounded-full font-medium shrink-0 ${
                       project.statusType === 'terracotta'
@@ -196,6 +208,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     {project.statusLabel ||
                       (project.status === 'active' ? '● 进行中' : '● 已暂停')}
                   </span>
+                  </div>
                 </div>
 
                 {/* Subtitle description */}
@@ -379,6 +392,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 )}
               </AnimatePresence>
             </motion.article>
+            </SwipeableProject>
           );
         })}
       </div>

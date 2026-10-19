@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { navigationVisibility } from "../services/navigationVisibility.ts";
+import { holdBodyScroll } from "../services/bodyScrollLock.ts";
 const dialogStack: string[] = [];
 if (typeof window !== "undefined")
   window.addEventListener("popstate", () => {
@@ -26,8 +27,7 @@ export function useDialog(open: boolean, close: () => void, initialFocus?: strin
     viewport();
     window.visualViewport?.addEventListener("resize", viewport);
     const previous = document.activeElement as HTMLElement | null;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const releaseScroll = holdBodyScroll();
     const token = crypto.randomUUID();
     dialogStack.push(token);
     history.pushState({ ...history.state, dialogToken: token }, "");
@@ -83,7 +83,7 @@ export function useDialog(open: boolean, close: () => void, initialFocus?: strin
       window.visualViewport?.removeEventListener("resize", viewport);
       window.removeEventListener("popstate", pop);
       document.removeEventListener("keydown", keydown);
-      document.body.style.overflow = overflow;
+      releaseScroll();
       if (!popped && history.state?.dialogToken === token) history.back();
       const remaining = [
         ...document.querySelectorAll<HTMLElement>('[role="dialog"]'),

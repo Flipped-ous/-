@@ -102,7 +102,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
+    <div className="more-page flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
       {/* Hidden file input for import */}
       <input
         ref={fileInputRef}
@@ -138,15 +138,15 @@ export const MoreView: React.FC<MoreViewProps> = ({
         </button>
       </header>
 
-      <div className="flex flex-col gap-4">
+      <div className="more-sections flex flex-col gap-4">
         <SyncConnectionControl />
 
         {/* Module 2: 外观与动效体验 */}
         <section>
           <div className="flex items-center justify-between px-1 mb-1.5 text-[12.5px] font-semibold text-[#28231D] dark:text-[#EDE6DE]">
-            <span>外观与体验</span>
+            <span>外观与提醒</span>
             <span className="text-[11px] font-normal text-[#786E64] dark:text-[#A89E92]">
-              温润宣纸感
+              日常设置
             </span>
           </div>
 
@@ -229,7 +229,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
                 <div>
                   <div className="font-medium">导出完整数据备份</div>
                   <div className="text-[11px] text-[#786E64]">
-                    生成包含任务、项目、笔记和图片的 ZIP
+                    任务、项目、笔记与图片
                   </div>
                 </div>
               </div>
@@ -261,7 +261,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
                 <div>
                   <div className="font-medium">导入恢复备份数据</div>
                   <div className="text-[11px] text-[#786E64]">
-                    支持结构校验、覆盖或增量合并
+                    支持覆盖恢复与增量合并
                   </div>
                 </div>
               </div>
@@ -270,38 +270,8 @@ export const MoreView: React.FC<MoreViewProps> = ({
               </span>
             </div>
 
-            {/* Real-time Storage stat */}
-            <div className="p-3.5 bg-[#FAF6EF]/40 dark:bg-[#201C19]">
-              <div className="flex items-center justify-between text-[12px] text-[#786E64] dark:text-[#A89E92] mb-2 font-medium">
-                <span className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">
-                    inventory_2
-                  </span>
-                  本地数据统计
-                </span>
-                <span>离线保存</span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div className="bg-white dark:bg-[#2C2723] rounded-xl p-2.5 text-center border border-[#746B61]/10">
-                  <div className="text-[16px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-                    {tasksCount}
-                  </div>
-                  <div className="text-[11px] text-[#786E64]">个待办项</div>
-                </div>
-                <div className="bg-white dark:bg-[#2C2723] rounded-xl p-2.5 text-center border border-[#746B61]/10">
-                  <div className="text-[16px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-                    {projectsCount}
-                  </div>
-                  <div className="text-[11px] text-[#786E64]">个项目</div>
-                </div>
-                <div className="bg-white dark:bg-[#2C2723] rounded-xl p-2.5 text-center border border-[#746B61]/10">
-                  <div className="text-[16px] font-bold text-[#28231D] dark:text-[#EDE6DE]">
-                    {reviewsCount}
-                  </div>
-                  <div className="text-[11px] text-[#786E64]">篇笔记</div>
-                </div>
-              </div>
+            <div className="settings-totals" aria-label="本地数据统计">
+              <span><strong>{tasksCount}</strong>待办</span><span><strong>{projectsCount}</strong>项目</span><span><strong>{reviewsCount}</strong>笔记</span>
             </div>
           </div>
         </section>

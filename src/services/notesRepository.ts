@@ -16,11 +16,15 @@ function publish(rows: Note[]) {
   snapshot = rows;
   listeners.forEach((fn) => fn());
 }
+/** Publish notes only after a multi-entity transaction has committed. */
+export const publishCommittedNotes = publish;
 function serialize<T>(operation: () => Promise<T>): Promise<T> {
   const result = pending.catch(() => {}).then(operation);
   pending = result;
   return result;
 }
+/** Shared by project relationship transactions so autosave cannot interleave note writes. */
+export const withNotesWrite = serialize;
 export async function transaction<T>(
   names: string[],
   mode: IDBTransactionMode,

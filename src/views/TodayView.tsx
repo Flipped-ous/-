@@ -4,6 +4,7 @@ import { useMotion } from '../motion/MotionProvider.tsx';
 import type { Task, DueCategory } from '../types/index.ts';
 import { SegmentedControl } from '../components/SegmentedControl.tsx';
 import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
+import { WrapUpButton } from '../components/WrapUpButton.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
 import { FilterTransition } from '../motion/FilterTransition.tsx';
 import { priorities, priorityTasks } from '../utils/taskPresentation.ts';
@@ -65,9 +66,9 @@ export const TodayView: React.FC<TodayViewProps> = ({
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   return (
-    <div className="flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
+    <div className="today-page flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
       {/* Top Header */}
-      <header className="flex items-center justify-between mb-3">
+      <header className="today-header flex items-center justify-between mb-2">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-[#F5E8E4] dark:bg-[#422923] flex items-center justify-center text-[#A55340] dark:text-[#E08570]">
             <span className="material-symbols-outlined text-[19px]">
@@ -75,9 +76,6 @@ export const TodayView: React.FC<TodayViewProps> = ({
             </span>
           </div>
           <div>
-            <div className="text-[11px] font-normal text-[#786E64] dark:text-[#A89E92] leading-none mb-0.5">
-              晨光暖白 · 顺遂有常
-            </div>
             <h1 className="text-[20px] font-bold text-[#28231D] dark:text-[#EDE6DE] tracking-tight">
               今天
             </h1>
@@ -101,11 +99,11 @@ export const TodayView: React.FC<TodayViewProps> = ({
       <motion.div
         layoutId={config.level === 'rich' ? 'task-summary' : undefined}
         transition={{ duration: config.durations.pageTransition / 1000 }}
-        className="flex items-baseline justify-between mb-3.5"
+        className="today-overview flex items-baseline justify-between mb-2"
       >
         <div>
           <div className="flex items-baseline gap-2">
-            <h2 className="text-[22px] font-bold text-[#28231D] dark:text-[#EDE6DE] flex items-baseline">
+            <h2 className="text-[20px] font-bold text-[#28231D] dark:text-[#EDE6DE] flex items-baseline">
               今日待办 · <AnimatedNumber value={totalCount} className="mx-1" />
               项
             </h2>
@@ -116,7 +114,6 @@ export const TodayView: React.FC<TodayViewProps> = ({
               day: 'numeric',
               weekday: 'long',
             })}{' '}
-            · 顺遂有序 · 心安神凝
           </p>
         </div>
 
@@ -129,7 +126,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
       {/* Segmented Control Filter */}
       <SegmentedControl
-        className="mb-3.5"
+        className="mb-1"
         activeId={filter}
         onChange={(value) => {
           if (value === filter) return;
@@ -149,12 +146,12 @@ export const TodayView: React.FC<TodayViewProps> = ({
         ]}
       />
 
-      <div className="today-priority">
+      <div className="today-tools"><div className="today-priority">
         <button className="agenda-filter" aria-expanded={showPriority} onClick={() => setShowPriority(!showPriority)}><span className="material-symbols-outlined" aria-hidden="true">filter_list</span>{priorities.find(p => p.value === priority)?.label || '全部重要程度'} ⌄</button>
         {priority !== 'all' && <button className="agenda-link" aria-label="清除重要程度筛选" onClick={() => setPriority('all')}>清除</button>}
         {showPriority && <div className="priority-popover" role="group" aria-label="重要程度筛选">{[{ value: 'all' as const, label: '全部重要程度' }, ...priorities].map(p => <button key={p.value} aria-pressed={priority === p.value} onClick={() => { setPriority(p.value); setShowPriority(false); }}>{p.label} {priority === p.value ? '✓' : ''}</button>)}</div>}
       </div>
-      {wrapCount > 0 && <button className="wrap-entry" onClick={onOpenWrap}>还有 {wrapCount} 项待办可整理 <span>收工整理 →</span></button>}
+      <WrapUpButton count={wrapCount} onClick={onOpenWrap} /></div>
       <FilterTransition value={`${filter}:${priority}`} direction={filterDirection}>
         {/* Pending Tasks List */}
         <div

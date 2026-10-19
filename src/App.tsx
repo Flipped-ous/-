@@ -5,6 +5,7 @@ import { reconcileReminders, onReminderAction } from "./services/reminders.ts";
  */
 
 import { Capacitor, SystemBars, SystemBarsStyle } from "@capacitor/core";
+import { flushSync } from 'react-dom';
 import { App as NativeApp } from "@capacitor/app";
 import { exportBackupFile, NativeAppearance } from "./services/native.ts";
 import React, {
@@ -36,6 +37,7 @@ import {
   mergeEntities,
   createBackup,
   validateBackupData,
+  restoreTask,
 } from "./utils/taskLogic.ts";
 import { loadStorageData, saveStorageData } from "./services/storage.ts";
 import { migrateStorageData } from "./services/migration.ts";
@@ -50,7 +52,10 @@ import {
 } from "./components/BottomNavigation.tsx";
 import { AddTaskSheet } from "./components/AddTaskSheet.tsx";
 import { Toast } from "./components/Toast.tsx";
-import { UndoSnackbar } from "./components/UndoSnackbar.tsx";
+import { DeletionStack, type DeletionReceipt } from './components/DeletionStack.tsx';
+import { DeleteProjectDialog } from './components/DeleteProjectDialog.tsx';
+import { removeProject, undoRemoveProject } from './services/projectRepository.ts';
+import { belongsToProject } from './utils/projectRelations.ts';
 import { TodayView } from "./views/TodayView.tsx";
 import { TasksView } from "./views/TasksView.tsx";
 import { ProjectsView } from "./views/ProjectsView.tsx";
@@ -66,6 +71,7 @@ import {
   getNotes,
   subscribeNotes,
   saveNote,
+  publishCommittedNotes,
 } from "./services/notesRepository.ts";
 import {
   createNotesBackup,
@@ -78,6 +84,7 @@ import { arrangeTasks, undoArrangement, type ScheduleUndo } from './utils/wrapUp
 import { wrapTasks } from './utils/taskPresentation.ts';
 import { mirrorWrapReminder, WrapReminder } from './services/wrapReminder.ts';
 import { commitTaskBatch } from './services/taskBatch.ts';
+import { TodayWidget, mirrorTodayWidget, type WidgetLaunch } from './services/todayWidget.ts';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTabId>("today");
@@ -88,11 +95,7 @@ export default function App() {
     setTasks,
     saveTask,
     toggle,
-    remove,
-    undo,
-    dismiss,
     move,
-    deletedTaskBackup,
   } = useTasks(initialTasks);
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [reviews, setReviews] = useState<ReviewEntry[]>(initialReviews);
@@ -106,12 +109,14 @@ export default function App() {
   } | null>(null);
   const [projectDetail, setProjectDetail] = useState<Project | null>(null);
   const [taskInitial, setTaskInitial] = useState<Partial<Task> | undefined>();
-  const [noteUndo, setNoteUndo] = useState<Note | null>(null);
+  const [deletions, setDeletions] = useState<DeletionReceipt[]>([]);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
 
   // UI state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [wrapOpen, setWrapOpen] = useState(false);
   const [wrapError, setWrapError] = useState('');
+  const [widgetError, setWidgetError] = useState('');
   const batchLock = useRef(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -198,11 +203,36 @@ export default function App() {
     saveStorageData(snapshot)
       .then(async () => {
         setStorageError('');
+        void mirrorTodayWidget(snapshot.tasks, snapshot.settings).then(() => setWidgetError('')).catch(error => setWidgetError((error as Error).message || '桌面小组件更新失败'));
         try { await mirrorWrapReminder(snapshot.tasks, snapshot.settings); setWrapError(''); }
         catch (error) { setWrapError((error as Error).message || '收工提醒更新失败，请在提醒策略中重试'); }
       })
       .catch((error) => setStorageError(error.message));
   }, [hydrated, tasks, projects, reviews, devices, settings]);
+
+  useEffect(() => {
+    if (!hydrated || !Capacitor.isNativePlatform()) return;
+    let active = true;
+    const openWidget = (request: WidgetLaunch) => {
+      if (!active || !request.action) return;
+      if (navigationVisibility.getSnapshot()) {
+        showToast('请先保存或关闭当前编辑，再从小组件打开');
+        return;
+      }
+      setActiveTab('today'); setProjectDetail(null); setNoteScreen(null);
+      if (request.action === 'add') {
+        const date = new Date(); date.setHours(0, 0, 0, 0);
+        setTaskToEdit(null); setTaskInitial({ dueAt: date.toISOString() }); setIsAddTaskOpen(true);
+      } else if (request.action === 'task') {
+        const task = businessRef.current.tasks.find(item => item.id === request.taskId);
+        if (task) { setTaskToEdit(task); setTaskInitial(undefined); setIsAddTaskOpen(true); }
+        else showToast('这项待办已删除，请查看最新列表');
+      }
+    };
+    const listener = TodayWidget.addListener('openWidget', openWidget);
+    void TodayWidget.consumeLaunch().then(openWidget).catch(error => setWidgetError(error.message));
+    return () => { active = false; void listener.then(handle => handle.remove()); };
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated || !Capacitor.isNativePlatform()) return;
@@ -319,10 +349,54 @@ export default function App() {
     toggle(id);
   };
   const handleDeleteTask = (id: string) => {
-    remove(id);
+    const current = businessRef.current;
+    const index = current.tasks.findIndex(task => task.id === id);
+    if (index < 0) return;
+    const task = current.tasks[index];
+    const next = current.tasks.filter(item => item.id !== id);
+    businessRef.current = { ...current, tasks: next };
+    setTasks(next);
+    recordDeletion(task.title, () => {
+      const state = businessRef.current;
+      if (state.tasks.some(item => item.id === id)) throw new Error('任务已经恢复');
+      const linked = task.projectId ? state.projects.some(project => project.id === task.projectId) : state.projects.some(project => project.name === task.project);
+      const value = linked ? task : { ...task, projectId: undefined, project: '' };
+      const restored = restoreTask(state.tasks, value, index);
+      businessRef.current = { ...state, tasks: restored };
+      setTasks(restored);
+    });
   };
-  const handleUndoDelete = () => {
-    undo();
+  const recordDeletion = (title: string, undo: DeletionReceipt['undo']) => setDeletions(previous => [{ id: crypto.randomUUID(), title, undo }, ...previous]);
+  const recordDeletedNote = (note: Note) => recordDeletion(note.title || '未命名笔记', async () => {
+    if (getNotes().some(item => item.id === note.id)) throw new Error('笔记已经恢复');
+    const projectId = businessRef.current.projects.some(project => project.id === note.projectId) ? note.projectId : undefined;
+    await saveNote({ ...note, projectId, updatedAt: new Date().toISOString() });
+  });
+  const publishProjectChange = (result: { tasks: Task[]; projects: Project[]; notes: Note[] }) => {
+    flushSync(() => {
+      businessRef.current = { ...businessRef.current, tasks: result.tasks, projects: result.projects };
+      setTasks(result.tasks); setProjects(result.projects);
+      publishCommittedNotes(result.notes);
+    });
+  };
+  const handleDeleteProject = async () => {
+    if (!projectToDelete || batchLock.current) throw new Error('正在保存，请稍候');
+    batchLock.current = true;
+    try {
+      const result = await removeProject(projectToDelete.id);
+      await publishProjectChange(result);
+      recordDeletion(`项目：${result.undo.project.name}`, async () => {
+        if (batchLock.current) throw new Error('正在保存，请稍候');
+        batchLock.current = true;
+        try {
+          const restored = await undoRemoveProject(result.undo);
+          await publishProjectChange(restored);
+          if (restored.skipped) showToast(`已恢复项目，${restored.skipped} 项已变化的内容保持当前归属`);
+        } finally { batchLock.current = false; }
+      });
+      setProjectToDelete(null);
+      setProjectDetail(current => current?.id === result.undo.project.id ? null : current);
+    } finally { batchLock.current = false; }
   };
   const handleSaveTask = (value: Partial<Task>) => {
     saveTask(value);
@@ -418,7 +492,7 @@ export default function App() {
       { schemaVersion: 3, tasks, projects, reviews, devices, settings },
       mode === "merge",
     );
-    dismiss();
+    setDeletions([]);
     setTasks(result.tasks);
     setProjects(result.projects);
     setReviews(result.reviews);
@@ -521,6 +595,7 @@ export default function App() {
                   tasks={tasks}
                   onOpenDetail={setProjectDetail}
                   onAddProject={handleAddProject}
+                  onDeleteProject={setProjectToDelete}
                   onToggleTask={handleToggleTask}
                   onEditTask={handleOpenEditTask}
                 />
@@ -654,7 +729,7 @@ export default function App() {
               editing={noteScreen.editing}
               projects={projects}
               onClose={() => setNoteScreen(null)}
-              onUndo={setNoteUndo}
+              onUndo={recordDeletedNote}
               onTask={(note) => {
                 setTaskToEdit(null);
                 setTaskInitial({
@@ -669,35 +744,11 @@ export default function App() {
             />
           )}
         </AnimatePresence>
-        <UndoSnackbar
-          visible={!!noteUndo}
-          message={`已删除「${noteUndo?.title || "未命名笔记"}」`}
-          onUndo={() => {
-            if (noteUndo)
-              void saveNote({
-                ...noteUndo,
-                updatedAt: new Date().toISOString(),
-              })
-                .then(() => setNoteUndo(null))
-                .catch((e) => showToast(e.message));
-          }}
-          onDismiss={() => setNoteUndo(null)}
-          duration={5000}
-        />
-
-        {/* Undo Snackbar on deletion */}
-        <UndoSnackbar
-          key={deletedTaskBackup?.task.id}
-          visible={!!deletedTaskBackup}
-          message={
-            deletedTaskBackup
-              ? `已删除「${deletedTaskBackup.task.title}」`
-              : "已删除任务"
-          }
-          onUndo={handleUndoDelete}
-          onDismiss={dismiss}
-          duration={5000}
-        />
+        <DeletionStack entries={deletions} onRemove={id => setDeletions(previous => previous.filter(entry => entry.id !== id))} onDismiss={() => setDeletions([])} onError={showToast} />
+        {projectToDelete && <DeleteProjectDialog project={projectToDelete}
+          taskCount={tasks.filter(task => belongsToProject(task, projectToDelete)).length}
+          noteCount={notes.filter(note => note.projectId === projectToDelete.id).length}
+          onClose={() => setProjectToDelete(null)} onConfirm={handleDeleteProject} />}
 
         {/* Toast Notification */}
         <AnimatePresence>{wrapOpen && <WrapUpSheet tasks={tasks} onClose={() => setWrapOpen(false)}
@@ -710,6 +761,7 @@ export default function App() {
             return { tasks: next, count, skipped: count ? 0 : 1 };
           }); }} />}</AnimatePresence>
         {wrapError && <div role="alert" className="wrap-system-error">{wrapError}<button onClick={() => { const snapshot = businessRef.current; void saveStorageData(snapshot).then(() => mirrorWrapReminder(snapshot.tasks, snapshot.settings)).then(() => setWrapError('')).catch(error => setWrapError(error.message)); }}>重试</button></div>}
+        {widgetError && !wrapError && <div role="alert" className="wrap-system-error">{widgetError}<button onClick={() => { const snapshot = businessRef.current; void saveStorageData(snapshot).then(() => mirrorTodayWidget(snapshot.tasks, snapshot.settings)).then(() => setWidgetError('')).catch(error => setWidgetError(error.message)); }}>重试</button></div>}
         <Toast message={toastMessage} />
       </div>
     </MotionProvider>

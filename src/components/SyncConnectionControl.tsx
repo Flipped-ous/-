@@ -6,23 +6,10 @@ export function SyncConnectionControl() {
   useDialog(open, () => setOpen(false));
   return (
     <section>
-      <div className="px-1 mb-2 text-[13px] font-semibold">手机与电脑</div>
-      <div className="paper-card rounded-[16px] p-4 bg-white dark:bg-[#27221E]">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[14px] font-medium">电脑同步</p>
-          <span className="text-[11px] text-[#786E64] dark:text-[#A89E92]">
-            尚未接入
-          </span>
-        </div>
-        <p className="text-[12px] text-[#786E64] dark:text-[#A89E92] leading-relaxed mt-2">
-          两端各自保存数据，离线也能使用。电脑端适配后，通过同一局域网配对互传。
-        </p>
-        <button
-          className="mt-3 text-[13px] text-[#A55340] min-h-9"
-          onClick={() => setOpen(true)}
-        >
-          查看连接方式 →
-        </button>
+      <h2 className="settings-section-title px-1 text-[13px] font-semibold">手机与电脑</h2>
+      <div className="settings-sync-card">
+        <div><h3>电脑同步</h3><span>尚未接入</span></div>
+        <button type="button" onClick={() => setOpen(true)}>查看连接方式 <span aria-hidden="true">→</span></button>
       </div>
       {open &&
         createPortal(
@@ -42,7 +29,7 @@ export function SyncConnectionControl() {
                   ✕
                 </button>
               </header>
-              <p>
+              <div className="sync-dialog-content"><p>
                 沿用旧版的连接流程：在电脑的设置中进入“手机与电脑”，选择“添加手机”，再用手机扫码或粘贴一次性配对码。
               </p>
               <div className="reminder-options">
@@ -54,7 +41,7 @@ export function SyncConnectionControl() {
               </p>
               <p>
                 现阶段请使用“导出完整数据备份”保存手机数据。旧版电脑备份格式不同，不能直接导入。
-              </p>
+              </p></div>
             </section>
           </div>,
           document.body,

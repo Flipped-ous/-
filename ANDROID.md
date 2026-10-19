@@ -11,7 +11,7 @@
 
 1.1.0 接入官方 Local Notifications 8.3.1：真实权限、通知渠道、准确时间设置、任务截止／提前提醒、更新取消、重启恢复接收器及通知点击。浏览器不会发送系统通知，通知真实投递仍需真机确认。局域网仅预留接口，旧 APK 参考与办公室接入清单见 docs/SYNC.md。
 
-当前版本 1.2.0，包名 com.jinriyouxu.app、versionCode 7。旧 2.3.0 图标来源 APK 的包名为 cn.orderlife.mobile，两个应用不同，不能覆盖安装或自动迁移数据。请勿为换图标修改当前包名或签名。
+当前版本 1.2.6，包名 com.jinriyouxu.app、versionCode 13。旧 2.3.0 图标来源 APK 的包名为 cn.orderlife.mobile，两个应用不同，不能覆盖安装或自动迁移数据。请勿为换图标修改当前包名或签名。
 
 1.2.0 新增独立 WrapReminder 原生插件和闹钟接收器，支持每日收工整理通知。镜像在业务数据落盘后更新，未完成数量在触发时计算；原生策略测试、实现及手机验收边界见 docs/WRAP_UP.md 与 docs/VALIDATION.md。
 
@@ -56,3 +56,5 @@ Release 构建使用 `assembleRelease`。`pnpm android:apk` 是 Windows 的便�
 
 构建检查和签名检查无法替代真机验收；当前没有连接 Android 设备，安装后的触屏、软键盘和文件分享仍需要在实际手机上确认。
 
+
+1.2.4 增加 TodayWidget 原生插件与桌面组件，私有镜像、启动路由及验收说明见 docs/WIDGET.md。

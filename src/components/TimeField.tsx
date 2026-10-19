@@ -4,9 +4,11 @@ import React, { useId, useRef } from 'react';
 export function TimeField({
   value,
   onChange,
+  allowClear = true,
 }: {
   value: string;
   onChange: (value: string) => void;
+  allowClear?: boolean;
 }) {
   const minuteRef = useRef<HTMLInputElement>(null);
   const hintId = useId();
@@ -59,7 +61,7 @@ export function TimeField({
             onChange={(event) => update('minute', event.target.value)}
             onBlur={() => normalize('minute')} />
         </div>
-        {hasValue && (
+        {allowClear && hasValue && (
           <button type="button" className="min-h-11 px-1 text-[12px] text-[#786E64] dark:text-[#A89E92] cursor-pointer"
             onClick={() => onChange('')}>清除时间</button>
         )}
