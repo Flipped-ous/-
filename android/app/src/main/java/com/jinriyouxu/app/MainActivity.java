@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AppearancePlugin.class);
+        registerPlugin(WrapReminderPlugin.class);
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         AppearancePlugin.applyBackground(this, getResources().getColor(R.color.paper_background, getTheme()));

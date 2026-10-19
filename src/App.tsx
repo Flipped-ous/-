@@ -56,6 +56,7 @@ import { TasksView } from "./views/TasksView.tsx";
 import { ProjectsView } from "./views/ProjectsView.tsx";
 import { ReviewView } from "./views/ReviewView.tsx";
 import "./notes.css";
+import './agenda.css';
 import { NotesView } from "./views/NotesView.tsx";
 import { ProjectDetail } from "./views/ProjectDetail.tsx";
 import { NoteWorkspace } from "./components/NoteWorkspace.tsx";
@@ -72,6 +73,11 @@ import {
 } from "./services/notesBackup.ts";
 import { navigationVisibility } from "./services/navigationVisibility.ts";
 import { MoreView } from "./views/MoreView.tsx";
+import { WrapUpSheet } from './components/WrapUpSheet.tsx';
+import { arrangeTasks, undoArrangement, type ScheduleUndo } from './utils/wrapUp.ts';
+import { wrapTasks } from './utils/taskPresentation.ts';
+import { mirrorWrapReminder, WrapReminder } from './services/wrapReminder.ts';
+import { commitTaskBatch } from './services/taskBatch.ts';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTabId>("today");
@@ -104,6 +110,9 @@ export default function App() {
 
   // UI state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
+  const [wrapOpen, setWrapOpen] = useState(false);
+  const [wrapError, setWrapError] = useState('');
+  const batchLock = useRef(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -113,6 +122,8 @@ export default function App() {
   const [reviewPeriod, setReviewPeriod] = useState<"week" | "month">("week");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTabRef = useRef(activeTab);
+  const businessRef = useRef({ schemaVersion: 3, tasks, projects, reviews, devices, settings });
+  businessRef.current = { schemaVersion: 3, tasks, projects, reviews, devices, settings };
   activeTabRef.current = activeTab;
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -176,17 +187,45 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return;
-    saveStorageData({
+    const snapshot = {
       schemaVersion: 3,
       tasks,
       projects,
       reviews,
       devices,
       settings,
-    })
-      .then(() => setStorageError(""))
+    };
+    saveStorageData(snapshot)
+      .then(async () => {
+        setStorageError('');
+        try { await mirrorWrapReminder(snapshot.tasks, snapshot.settings); setWrapError(''); }
+        catch (error) { setWrapError((error as Error).message || '收工提醒更新失败，请在提醒策略中重试'); }
+      })
       .catch((error) => setStorageError(error.message));
   }, [hydrated, tasks, projects, reviews, devices, settings]);
+
+  useEffect(() => {
+    if (!hydrated || !Capacitor.isNativePlatform()) return;
+    const listener = WrapReminder.addListener('openWrapUp', () => setWrapOpen(true));
+    void WrapReminder.consumeLaunch().then(result => { if (result.requested) setWrapOpen(true); }).catch(error => setWrapError(error.message));
+    return () => { void listener.then(handle => handle.remove()); };
+  }, [hydrated]);
+
+  const persistBatch = async (transform: (current: Task[]) => { tasks: Task[]; count: number; skipped: number; undo?: ScheduleUndo[] }) => {
+    if (batchLock.current) throw new Error('正在保存，请稍候');
+    batchLock.current = true;
+    try {
+      const before = businessRef.current;
+      const result = await commitTaskBatch(before, transform);
+      if (!result.count) return result;
+      setTasks(result.tasks);
+      businessRef.current = { ...before, tasks: result.tasks };
+      setStorageError('');
+      // Failure here does not turn a successful business commit into a failed batch.
+      void mirrorWrapReminder(result.tasks, before.settings).then(() => setWrapError('')).catch(error => setWrapError(error.message));
+      return result;
+    } finally { batchLock.current = false; }
+  };
 
   useEffect(() => {
     const tick = () => setNow(new Date());
@@ -453,6 +492,8 @@ export default function App() {
             <PageTransition key={activeTab} page={activeTab}>
               {activeTab === "today" && (
                 <TodayView
+                  onOpenWrap={() => setWrapOpen(true)}
+                  wrapCount={wrapTasks(tasks, now).length}
                   tasks={todayTasks}
                   onToggleTask={handleToggleTask}
                   onOpenAddTask={handleOpenAddTask}
@@ -464,11 +505,12 @@ export default function App() {
 
               {activeTab === "tasks" && (
                 <TasksView
+                  onOpenWrap={() => setWrapOpen(true)}
                   tasks={tasks}
                   onToggleTask={handleToggleTask}
                   onDeleteTask={handleDeleteTask}
                   onEditTask={handleOpenEditTask}
-                  onOpenAddTask={handleOpenAddTask}
+                  onOpenAddTask={(values) => { handleOpenAddTask(); setTaskInitial(values); }}
                   onReorderTasks={handleReorderTasks}
                 />
               )}
@@ -658,6 +700,16 @@ export default function App() {
         />
 
         {/* Toast Notification */}
+        <AnimatePresence>{wrapOpen && <WrapUpSheet tasks={tasks} onClose={() => setWrapOpen(false)}
+          onApply={(ids, date) => persistBatch(current => arrangeTasks(current, ids, date))}
+          onUndo={(records) => persistBatch(current => undoArrangement(current, records))}
+          onComplete={async id => { await persistBatch(current => {
+            const stamp = new Date().toISOString();
+            let count = 0;
+            const next = current.map(task => task.id === id && task.status === 'pending' ? (count++, { ...task, status: 'completed' as const, completedAt: stamp, updatedAt: stamp }) : task);
+            return { tasks: next, count, skipped: count ? 0 : 1 };
+          }); }} />}</AnimatePresence>
+        {wrapError && <div role="alert" className="wrap-system-error">{wrapError}<button onClick={() => { const snapshot = businessRef.current; void saveStorageData(snapshot).then(() => mirrorWrapReminder(snapshot.tasks, snapshot.settings)).then(() => setWrapError('')).catch(error => setWrapError(error.message)); }}>重试</button></div>}
         <Toast message={toastMessage} />
       </div>
     </MotionProvider>

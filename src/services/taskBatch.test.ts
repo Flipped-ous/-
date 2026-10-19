@@ -1,0 +1,31 @@
+import 'fake-indexeddb/auto';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { commitTaskBatch } from './taskBatch.ts';
+import { arrangeTasks } from '../utils/wrapUp.ts';
+import { buildDueAt } from '../utils/taskEdit.ts';
+import { saveStorageData, loadStorageData } from './storage.ts';
+import { syncRepository } from './sync.ts';
+import type { StoredData } from './migration.ts';
+const now = new Date(2026,9,18,21);
+const snapshot: StoredData = { schemaVersion: 3, tasks: ['a','b','c','d'].map(id => ({ id, title: id, status: 'pending', priority: 'normal', project: '', dueAt: buildDueAt('2026-10-18'), createdAt: now.toISOString(), updatedAt: now.toISOString() })), projects: [], reviews: [], devices: [], settings: null };
+test('batch is not published before commit; failed storage preserves its inputs and remains retryable', async () => {
+ const original = structuredClone(snapshot);
+ let release!: () => void;
+ let published = false;
+ const pending = commitTaskBatch(snapshot, tasks => arrangeTasks(tasks, ['a','b','c'], '2026-10-19', now), () => new Promise<void>(resolve => { release = resolve; })).then(result => { published = true; return result; });
+ await Promise.resolve(); assert.equal(published, false); assert.deepEqual(snapshot, original);
+ release(); assert.equal((await pending).count, 3);
+ await assert.rejects(commitTaskBatch(snapshot, tasks => arrangeTasks(tasks, ['a'], '', now), async () => { throw new Error('磁盘已满'); }), /磁盘已满/);
+ assert.deepEqual(snapshot, original);
+ assert.equal((await commitTaskBatch(snapshot, tasks => arrangeTasks(tasks, ['a'], '', now), async () => {})).count, 1);
+});
+test('real batch snapshot round-trips all tasks and emits normal per-entity sync revisions', async () => {
+ await saveStorageData(snapshot);
+ const result = await commitTaskBatch(snapshot, tasks => arrangeTasks(tasks, ['a','b','c'], '2026-10-19', now));
+ const restored = await loadStorageData();
+ assert.deepEqual(JSON.parse(JSON.stringify(restored?.tasks)), JSON.parse(JSON.stringify(result.tasks)));
+ const exchange = await syncRepository.exportChanges();
+ assert.equal(exchange.records.filter(row => row.entity === 'tasks' && ['a','b','c'].includes(row.entityId) && row.revision >= 2).length, 3);
+ assert.equal(exchange.records.some(row => (row.entity as string) === 'settings'), false);
+});

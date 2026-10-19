@@ -6,8 +6,13 @@ import { SegmentedControl } from '../components/SegmentedControl.tsx';
 import { SwipeableTaskItem } from '../components/SwipeableTaskItem.tsx';
 import { AnimatedNumber } from '../components/AnimatedNumber.tsx';
 import { FilterTransition } from '../motion/FilterTransition.tsx';
+import { priorities, priorityTasks } from '../utils/taskPresentation.ts';
+import { usePageMemory, usePageScroll } from '../hooks/usePageMemory.ts';
+import type { PriorityLevel } from '../types/index.ts';
 
 interface TodayViewProps {
+  onOpenWrap?: () => void;
+  wrapCount?: number;
   tasks: Task[];
   onToggleTask: (taskId: string) => void;
   onOpenAddTask: () => void;
@@ -27,21 +32,35 @@ export const TodayView: React.FC<TodayViewProps> = ({
   onDeleteTask,
   onEditTask,
   onReorderTasks,
+  onOpenWrap,
+  wrapCount = 0,
 }) => {
   const config = useMotion();
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
+  const [filter, setFilter] = usePageMemory<'all' | 'pending' | 'completed'>('today-status', 'all');
+  const [priority, setPriority] = usePageMemory<PriorityLevel | 'all'>('today-priority', 'all');
+  const [showPriority, setShowPriority] = useState(false);
+  React.useEffect(() => {
+    if (!showPriority) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!(event.target as Element).closest('.today-priority')) setShowPriority(false);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [showPriority]);
+  usePageScroll('today');
   const [filterDirection, setFilterDirection] = useState(1);
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(true);
 
   // Filter tasks
-  const pendingTasks = tasks.filter((t) => t.status === 'pending');
-  const completedTasks = tasks.filter((t) => t.status === 'completed');
+  const scoped = priorityTasks(tasks, priority);
+  const pendingTasks = scoped.filter((t) => t.status === 'pending');
+  const completedTasks = scoped.filter((t) => t.status === 'completed');
 
   const displayedPending = filter === 'completed' ? [] : pendingTasks;
   const displayedCompleted = filter === 'pending' ? [] : completedTasks;
 
   const totalCount = tasks.length;
-  const completedCount = completedTasks.length;
+  const completedCount = tasks.filter(t => t.status === 'completed').length;
   const progressPercent =
     totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
@@ -119,18 +138,24 @@ export const TodayView: React.FC<TodayViewProps> = ({
           setFilter(value);
         }}
         options={[
-          { id: 'all', label: '全部', count: totalCount },
+          { id: 'all', label: '全部', count: scoped.length },
           { id: 'pending', label: '待完成', count: pendingTasks.length },
           {
             id: 'completed',
             label: '已完成',
-            count: completedCount,
+            count: completedTasks.length,
             motionId: 'brand-completed',
           },
         ]}
       />
 
-      <FilterTransition value={filter} direction={filterDirection}>
+      <div className="today-priority">
+        <button className="agenda-filter" aria-expanded={showPriority} onClick={() => setShowPriority(!showPriority)}><span className="material-symbols-outlined" aria-hidden="true">filter_list</span>{priorities.find(p => p.value === priority)?.label || '全部重要程度'} ⌄</button>
+        {priority !== 'all' && <button className="agenda-link" aria-label="清除重要程度筛选" onClick={() => setPriority('all')}>清除</button>}
+        {showPriority && <div className="priority-popover" role="group" aria-label="重要程度筛选">{[{ value: 'all' as const, label: '全部重要程度' }, ...priorities].map(p => <button key={p.value} aria-pressed={priority === p.value} onClick={() => { setPriority(p.value); setShowPriority(false); }}>{p.label} {priority === p.value ? '✓' : ''}</button>)}</div>}
+      </div>
+      {wrapCount > 0 && <button className="wrap-entry" onClick={onOpenWrap}>还有 {wrapCount} 项待办可整理 <span>收工整理 →</span></button>}
+      <FilterTransition value={`${filter}:${priority}`} direction={filterDirection}>
         {/* Pending Tasks List */}
         <div
           role="list"
@@ -156,7 +181,7 @@ export const TodayView: React.FC<TodayViewProps> = ({
 
           {displayedPending.length === 0 && displayedCompleted.length === 0 && (
             <div className="text-center py-8 text-[13px] text-[#786E64] dark:text-[#A89E92]">
-              今日所有待办均已完成，心安神凝
+              {priority !== 'all' || filter !== 'all' ? <><p>没有符合条件的待办</p><button className="agenda-link" onClick={() => { setPriority('all'); setFilter('all'); }}>清除筛选</button></> : '今天还没有待办，添加一项吧'}
             </div>
           )}
         </div>

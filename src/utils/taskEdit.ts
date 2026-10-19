@@ -9,7 +9,7 @@ export function quickDate(
 ): string {
   const date = new Date(now);
   if (option === 'tomorrow') date.setDate(date.getDate() + 1);
-  if (option === 'weekend')
+  if (option === 'weekend' && date.getDay() !== 0)
     date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7));
   return localDateValue(date);
 }

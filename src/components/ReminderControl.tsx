@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import type { AppSettings } from "../types/index.ts";
 import { useDialog } from "../hooks/useDialog.ts";
 import { NativeAppearance } from "../services/native.ts";
+import { TimeField } from './TimeField.tsx';
 import {
   openExactAlarmSettings,
   readReminderStatus,
@@ -25,6 +26,8 @@ export function ReminderControl({
     [status, setStatus] = useState<ReminderStatus>(webReminderStatus),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
+  const [wrapTime, setWrapTime] = useState(settings.wrapReminderTime || '21:00');
+  useEffect(() => setWrapTime(settings.wrapReminderTime || '21:00'), [settings.wrapReminderTime, open]);
   useDialog(open, () => setOpen(false));
   const refresh = () =>
     void readReminderStatus()
@@ -64,7 +67,7 @@ export function ReminderControl({
         <span className="material-symbols-outlined">notifications</span>
         <span>
           <strong>提醒策略</strong>
-          <small>按任务设置的具体时刻提醒</small>
+          <small>任务提醒与每日收工整理</small>
         </span>
         <span>{labels[settings.notification]} ›</span>
       </button>
@@ -78,7 +81,7 @@ export function ReminderControl({
               className="reminder-dialog"
             >
               <header>
-                <h2>任务提醒</h2>
+                <h2>提醒策略</h2>
                 <button
                   aria-label="关闭提醒设置"
                   onClick={() => setOpen(false)}
@@ -126,6 +129,23 @@ export function ReminderControl({
                   </div>
                 </>
               )}
+              <section className="wrap-reminder">
+                <h3>每日收工</h3>
+                <label>收工整理提醒<input type="checkbox" role="switch" aria-label="收工整理提醒" checked={settings.wrapReminderEnabled !== false} onChange={event => {
+                  const enabled = event.target.checked;
+                  onChange?.({ wrapReminderEnabled: enabled });
+                  if (enabled && status.supported && !status.granted) void action(requestReminderPermission);
+                }} /></label>
+                <p className="agenda-muted">仅在有逾期或今天未完成的任务时提醒，不会自动更改任务日期。</p>
+                <label>提醒时间 <span>{settings.wrapReminderTime || '21:00'}</span></label>
+                <TimeField value={wrapTime} onChange={setWrapTime} />
+                <button className="agenda-link" disabled={busy || !/^(?:[01]?\d|2[0-3]):[0-5]?\d$/.test(wrapTime)} onClick={() => {
+                  onChange?.({ wrapReminderTime: wrapTime.split(':').map(part => part.padStart(2, '0')).join(':') });
+                  setMessage('收工提醒时间已更新');
+                }}>保存提醒时间</button>
+                {!status.granted && <p className="agenda-muted">通知权限未允许，开启后才能收到晚间提醒。</p>}
+              </section>
+              <h3 className="agenda-muted">单项任务提醒</h3>
               <div className="reminder-options">
                 {(["gentle", "important", "all", "off"] as const).map((v) => (
                   <button

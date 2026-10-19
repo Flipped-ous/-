@@ -592,6 +592,8 @@ export function validateBackupData(data: any): {
     )
       return fail('设置值无效');
     if(s.reminderLeadMinutes!==undefined&&![0,5,10,15,30,60].includes(s.reminderLeadMinutes))return fail('提前提醒设置无效');
+    if (s.wrapReminderEnabled !== undefined && typeof s.wrapReminderEnabled !== 'boolean') return fail('收工提醒开关无效');
+    if (s.wrapReminderTime !== undefined && (typeof s.wrapReminderTime !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(s.wrapReminderTime))) return fail('收工提醒时间无效');
     if (s.syncPaused !== undefined && typeof s.syncPaused !== 'boolean')
       return fail('同步设置值无效');
     if (
@@ -603,6 +605,8 @@ export function validateBackupData(data: any): {
             'motionEnabled',
             'notification',
             'reminderLeadMinutes',
+            'wrapReminderEnabled',
+            'wrapReminderTime',
             'dataSizeMb',
             'syncPaused',
           ].includes(key),

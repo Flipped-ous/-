@@ -8,9 +8,11 @@ if (typeof window !== "undefined")
   });
 
 /** Shared Escape/Back, focus and scroll handling; the existing sheet markup remains unchanged. */
-export function useDialog(open: boolean, close: () => void) {
+export function useDialog(open: boolean, close: () => void, initialFocus?: string) {
   const closeRef = useRef(close);
   closeRef.current = close;
+  const focusRef = useRef(initialFocus);
+  focusRef.current = initialFocus;
   useLayoutEffect(() => {
     if (open) return navigationVisibility.holdDialog();
   }, [open]);
@@ -68,7 +70,7 @@ export function useDialog(open: boolean, close: () => void) {
       ].at(-1);
       dialog
         ?.querySelector<HTMLElement>(
-          'textarea, input:not([type="hidden"]):not([type="file"]), [contenteditable="true"], button',
+          focusRef.current || 'textarea, input:not([type="hidden"]):not([type="file"]), [contenteditable="true"], button',
         )
         ?.focus({ preventScroll: true });
     });

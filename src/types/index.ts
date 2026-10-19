@@ -87,6 +87,8 @@ export interface SyncDevice {
 }
 
 export interface AppSettings {
+  wrapReminderEnabled?: boolean;
+  wrapReminderTime?: string;
   reminderLeadMinutes?: number;
   theme: "light" | "dark";
   motion: "simple" | "standard" | "rich";
