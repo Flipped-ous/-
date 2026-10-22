@@ -19,8 +19,8 @@ import {
 } from './taskLogic.ts';
 import type { Task, BackupData } from '../types/index.ts';
 
-// Test reference date: 2026-05-24T12:00:00.000Z
-const refDate = new Date('2026-05-24T12:00:00.000Z');
+// Test reference date: 2026-05-24T12:00:00
+const refDate = new Date('2026-05-24T12:00:00');
 
 const sampleTasks: Task[] = [
   {
@@ -28,53 +28,53 @@ const sampleTasks: Task[] = [
     title: '整理本周局域网同步排期',
     status: 'pending',
     priority: 'urgent',
-    dueAt: '2026-05-23T18:00:00.000Z', // Overdue
+    dueAt: '2026-05-23T18:00:00', // Overdue
     projectId: 'proj-1',
     project: '基础设施',
-    createdAt: '2026-05-22T08:00:00.000Z',
-    updatedAt: '2026-05-22T08:00:00.000Z',
+    createdAt: '2026-05-22T08:00:00',
+    updatedAt: '2026-05-22T08:00:00',
   },
   {
     id: 't-2',
     title: '确认 Redmi Note 9 屏幕字号适配与断行',
     status: 'pending',
     priority: 'important',
-    dueAt: '2026-05-24T14:00:00.000Z', // Today
+    dueAt: '2026-05-24T14:00:00', // Today
     projectId: 'proj-1',
     project: '基础设施',
-    createdAt: '2026-05-24T09:00:00.000Z',
-    updatedAt: '2026-05-24T09:00:00.000Z',
+    createdAt: '2026-05-24T09:00:00',
+    updatedAt: '2026-05-24T09:00:00',
   },
   {
     id: 't-3',
     title: '购买无酸素描本与墨水笔',
     status: 'completed',
     priority: 'normal',
-    dueAt: '2026-05-24T10:00:00.000Z', // Today completed
+    dueAt: '2026-05-24T10:00:00', // Today completed
     projectId: 'proj-2',
     project: '生活琐事',
-    createdAt: '2026-05-24T08:00:00.000Z',
-    updatedAt: '2026-05-24T09:30:00.000Z',
-    completedAt: '2026-05-24T09:30:00.000Z',
+    createdAt: '2026-05-24T08:00:00',
+    updatedAt: '2026-05-24T09:30:00',
+    completedAt: '2026-05-24T09:30:00',
   },
   {
     id: 't-4',
     title: '准备下周一离线数据库快照版本更新',
     status: 'pending',
     priority: 'normal',
-    dueAt: '2026-05-26T10:00:00.000Z', // Future
+    dueAt: '2026-05-26T10:00:00', // Future
     projectId: 'proj-1',
     project: '基础设施',
-    createdAt: '2026-05-24T10:00:00.000Z',
-    updatedAt: '2026-05-24T10:00:00.000Z',
+    createdAt: '2026-05-24T10:00:00',
+    updatedAt: '2026-05-24T10:00:00',
   },
   {
     id: 't-5',
     title: '未安排日期的灵感便签',
     status: 'pending',
     priority: 'later',
-    createdAt: '2026-05-20T10:00:00.000Z',
-    updatedAt: '2026-05-20T10:00:00.000Z',
+    createdAt: '2026-05-20T10:00:00',
+    updatedAt: '2026-05-20T10:00:00',
     project: '灵感库',
   },
 ];
@@ -92,7 +92,10 @@ test('1. toggleTask switches pending to completed and records completedAt & upda
 
 // 2. delete + restore test
 test('2. deleteTask removes task and restoreTask puts it back at original position', () => {
-  const { updatedTasks, deletedTask, deletedIndex } = deleteTask(sampleTasks, 't-2');
+  const { updatedTasks, deletedTask, deletedIndex } = deleteTask(
+    sampleTasks,
+    't-2',
+  );
   assert.equal(updatedTasks.length, 4);
   assert.equal(deletedTask?.id, 't-2');
   assert.equal(deletedIndex, 1);
@@ -137,7 +140,7 @@ test('5. calculateProjectStats derives pending, completed, and progressPercent i
 test('6. calculateReviewStats computes real review metrics from tasks', () => {
   const reviewStats = calculateReviewStats(sampleTasks, refDate);
   assert.equal(reviewStats.completed, 1); // t-3 completed today
-  assert.equal(reviewStats.delayed, 1);   // t-1 overdue pending
+  assert.equal(reviewStats.delayed, 1); // t-1 overdue pending
   assert.equal(reviewStats.topProject, '基础设施');
 });
 
@@ -147,14 +150,34 @@ test('7. validateBackupData checks schemaVersion, arrays, and item structure', (
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
     tasks: sampleTasks,
-    projects: [],
+    projects: [
+      {
+        id: 'proj-1',
+        name: '基础设施',
+        description: '',
+        status: 'active',
+        createdAt: refDate.toISOString(),
+        updatedAt: refDate.toISOString(),
+      },
+      {
+        id: 'proj-2',
+        name: '生活琐事',
+        description: '',
+        status: 'active',
+        createdAt: refDate.toISOString(),
+        updatedAt: refDate.toISOString(),
+      },
+    ],
     reviews: [],
   };
   const validRes = validateBackupData(validData);
   assert.equal(validRes.valid, true);
   assert.equal(validRes.counts?.tasks, 5);
 
-  const invalidRes = validateBackupData({ schemaVersion: 'one', tasks: 'not-array' });
+  const invalidRes = validateBackupData({
+    schemaVersion: 'one',
+    tasks: 'not-array',
+  });
   assert.equal(invalidRes.valid, false);
   assert.ok(invalidRes.error);
 });

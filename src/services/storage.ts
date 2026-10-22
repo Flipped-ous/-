@@ -1,230 +1,248 @@
-import type { Task, Project, ReviewEntry, AppSettings, SyncDevice, BackupData } from '../types/index.ts';
-import { mergeEntities } from '../utils/taskLogic.ts';
+import { migrateStorageData, type StoredData } from "./migration.ts";
 
-const DB_NAME = 'jinri_youxu_db';
-const DB_VERSION = 1;
+const DB_NAME = "jinri_youxu_db";
+const DB_VERSION = 3;
+const FALLBACK_KEY = "jy_snapshot_v2";
+const stores = [
+  "tasks",
+  "projects",
+  "reviews",
+  "settings",
+  "devices",
+  "meta",
+  "notes",
+  "attachments",
+  "syncMeta",
+];
+let connection: Promise<IDBDatabase> | null = null;
+let writes: Promise<void> = Promise.resolve();
+let lastSavedMs = 0;
 
-let dbInstance: IDBDatabase | null = null;
-
-function openDB(): Promise<IDBDatabase> {
-  if (dbInstance) {
-    return Promise.resolve(dbInstance);
-  }
-
-  return new Promise((resolve, reject) => {
-    if (typeof window === 'undefined' || !window.indexedDB) {
-      reject(new Error('IndexedDB not supported'));
-      return;
-    }
-
-    const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-
-      if (!db.objectStoreNames.contains('tasks')) {
-        db.createObjectStore('tasks', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('projects')) {
-        db.createObjectStore('projects', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('reviews')) {
-        db.createObjectStore('reviews', { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings', { keyPath: 'key' });
-      }
-      if (!db.objectStoreNames.contains('devices')) {
-        db.createObjectStore('devices', { keyPath: 'id' });
-      }
+export function openDB(): Promise<IDBDatabase> {
+  if (connection) return connection;
+  connection = new Promise<IDBDatabase>((resolve, reject) => {
+    if (typeof indexedDB === "undefined")
+      return reject(new Error("IndexedDB 不可用"));
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      for (const name of stores)
+        if (!db.objectStoreNames.contains(name))
+          db.createObjectStore(name, {
+            keyPath: name === "settings" || name === "meta" ? "key" : "id",
+          });
     };
-
+    request.onblocked = () => reject(new Error("请关闭其他旧版页面后重新打开"));
+    request.onerror = () =>
+      reject(request.error || new Error("无法打开本地数据库"));
     request.onsuccess = () => {
-      dbInstance = request.result;
-      resolve(dbInstance);
+      request.result.onversionchange = () => {
+        request.result.close();
+        connection = null;
+      };
+      resolve(request.result);
     };
-
-    request.onerror = () => {
-      reject(request.error);
-    };
+  }).catch((error) => {
+    connection = null;
+    throw error;
   });
+  return connection!;
 }
 
-/**
- * Loads all persistent data from IndexedDB, with localStorage fallback.
- */
-export async function loadStorageData(): Promise<{
-  tasks: Task[];
-  projects: Project[];
-  reviews: ReviewEntry[];
-  settings: AppSettings | null;
-  devices: SyncDevice[];
-} | null> {
+function fallbackRead(): StoredData | null {
   try {
-    const db = await openDB();
-
-    const readStore = <T>(storeName: string): Promise<T[]> => {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, 'readonly');
-        const store = tx.objectStore(storeName);
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
-    };
-
-    const tasks = await readStore<Task>('tasks');
-    const projects = await readStore<Project>('projects');
-    const reviews = await readStore<ReviewEntry>('reviews');
-    const devices = await readStore<SyncDevice>('devices');
-
-    let settings: AppSettings | null = null;
-    const settingsRows = await readStore<{ key: string; value: AppSettings }>('settings');
-    const settingsItem = settingsRows.find((r) => r.key === 'appSettings');
-    if (settingsItem) {
-      settings = settingsItem.value;
-    }
-
-    // If IndexedDB has no tasks, check if localStorage has fallback or return null
-    if (tasks.length === 0 && projects.length === 0) {
-      const lsBackup = loadLocalStorageFallback();
-      if (lsBackup) return lsBackup;
-      return null;
-    }
-
-    return {
-      tasks,
-      projects,
-      reviews,
-      settings,
-      devices,
-    };
-  } catch (err) {
-    console.warn('IndexedDB read failed, trying localStorage fallback:', err);
-    return loadLocalStorageFallback();
-  }
-}
-
-/**
- * Saves tasks to IndexedDB.
- */
-export async function saveTasksToStorage(tasks: Task[]): Promise<void> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction('tasks', 'readwrite');
-    const store = tx.objectStore('tasks');
-    await clearStore(store);
-    for (const t of tasks) {
-      store.put(t);
-    }
-  } catch {
-    // Fallback to localStorage
-    try {
-      localStorage.setItem('jy_tasks', JSON.stringify(tasks));
-    } catch {}
-  }
-}
-
-/**
- * Saves projects to IndexedDB.
- */
-export async function saveProjectsToStorage(projects: Project[]): Promise<void> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction('projects', 'readwrite');
-    const store = tx.objectStore('projects');
-    await clearStore(store);
-    for (const p of projects) {
-      store.put(p);
-    }
-  } catch {
-    try {
-      localStorage.setItem('jy_projects', JSON.stringify(projects));
-    } catch {}
-  }
-}
-
-/**
- * Saves reviews to IndexedDB.
- */
-export async function saveReviewsToStorage(reviews: ReviewEntry[]): Promise<void> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction('reviews', 'readwrite');
-    const store = tx.objectStore('reviews');
-    await clearStore(store);
-    for (const r of reviews) {
-      store.put(r);
-    }
-  } catch {
-    try {
-      localStorage.setItem('jy_reviews', JSON.stringify(reviews));
-    } catch {}
-  }
-}
-
-/**
- * Saves settings to IndexedDB.
- */
-export async function saveSettingsToStorage(settings: AppSettings): Promise<void> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction('settings', 'readwrite');
-    const store = tx.objectStore('settings');
-    store.put({ key: 'appSettings', value: settings });
-  } catch {
-    try {
-      localStorage.setItem('jy_settings', JSON.stringify(settings));
-    } catch {}
-  }
-}
-
-/**
- * Saves sync devices to IndexedDB.
- */
-export async function saveDevicesToStorage(devices: SyncDevice[]): Promise<void> {
-  try {
-    const db = await openDB();
-    const tx = db.transaction('devices', 'readwrite');
-    const store = tx.objectStore('devices');
-    await clearStore(store);
-    for (const d of devices) {
-      store.put(d);
-    }
-  } catch {
-    try {
-      localStorage.setItem('jy_devices', JSON.stringify(devices));
-    } catch {}
-  }
-}
-
-function clearStore(store: IDBObjectStore): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = store.clear();
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function loadLocalStorageFallback() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  try {
-    const rawTasks = localStorage.getItem('jy_tasks');
-    const rawProjects = localStorage.getItem('jy_projects');
-    const rawReviews = localStorage.getItem('jy_reviews');
-    const rawSettings = localStorage.getItem('jy_settings');
-    const rawDevices = localStorage.getItem('jy_devices');
-
-    if (!rawTasks && !rawProjects) return null;
-
-    return {
-      tasks: rawTasks ? JSON.parse(rawTasks) : [],
-      projects: rawProjects ? JSON.parse(rawProjects) : [],
-      reviews: rawReviews ? JSON.parse(rawReviews) : [],
-      settings: rawSettings ? JSON.parse(rawSettings) : null,
-      devices: rawDevices ? JSON.parse(rawDevices) : [],
-    };
+    localStorage.getItem(FALLBACK_KEY);
   } catch {
     return null;
   }
+  const saved = localStorage.getItem(FALLBACK_KEY);
+  if (saved !== null) return migrateStorageData(JSON.parse(saved));
+  const names = ["tasks", "projects", "reviews", "settings", "devices"];
+  const old = Object.fromEntries(
+    names.map((name) => [name, localStorage.getItem("jy_" + name)]),
+  );
+  if (Object.values(old).every((value) => value === null)) return null;
+  return migrateStorageData(
+    Object.fromEntries(
+      Object.entries(old).map(([name, value]) => [
+        name,
+        value === null ? (name === "settings" ? null : []) : JSON.parse(value),
+      ]),
+    ),
+  );
+}
+
+/** A single readonly transaction gives a consistent snapshot, including intentionally empty stores. */
+export async function loadStorageData(): Promise<StoredData | null> {
+  let db: IDBDatabase;
+  try {
+    db = await openDB();
+  } catch (error) {
+    const fallback = fallbackRead();
+    if (fallback) return fallback;
+    // A supported database that failed to open must not be overwritten with seed data.
+    if (typeof indexedDB !== "undefined") throw error;
+    return null;
+  }
+  const raw = await new Promise<any>((resolve, reject) => {
+    const tx = db.transaction(stores, "readonly");
+    const result: Record<string, any> = {};
+    for (const name of stores) {
+      const req = tx.objectStore(name).getAll();
+      req.onsuccess = () => {
+        result[name] = req.result;
+      };
+    }
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = tx.onabort = () =>
+      reject(tx.error || new Error("读取本地数据失败"));
+  });
+  const meta = raw.meta.find((row: any) => row.key === "snapshot");
+  const settings =
+    raw.settings.find((row: any) => row.key === "appSettings")?.value || null;
+  if (
+    !meta &&
+    !settings &&
+    ["tasks", "projects", "reviews", "devices"].every(
+      (name) => raw[name].length === 0,
+    )
+  )
+    return fallbackRead();
+  const snapshot = migrateStorageData({
+    ...raw,
+    schemaVersion: meta?.schemaVersion || 1,
+    notes: (meta?.schemaVersion || 1) < 3 ? undefined : raw.notes,
+    settings,
+  });
+  if ((meta?.schemaVersion || 1) < 3) {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(["meta", "notes"], "readwrite");
+      tx.objectStore("meta").put({
+        key: "before-notes-v3",
+        value: { ...raw, settings },
+        savedAt: new Date().toISOString(),
+      });
+      for (const note of snapshot.notes || [])
+        tx.objectStore("notes").put(note);
+      tx.objectStore("meta").put({
+        ...meta,
+        key: "snapshot",
+        schemaVersion: 3,
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () =>
+        reject(tx.error || new Error("笔记升级失败，原始数据已保留"));
+    });
+  }
+  // A previously unavailable IndexedDB may have left a newer, complete fallback snapshot.
+  let fallbackRaw: string | null = null;
+  try {
+    fallbackRaw = localStorage.getItem(FALLBACK_KEY);
+  } catch {}
+  if (fallbackRaw) {
+    const fallback = JSON.parse(fallbackRaw);
+    if (fallback.savedAt > (meta?.savedAt || ""))
+      return migrateStorageData(fallback);
+  }
+  return snapshot;
+}
+
+/** Serialize writes; all stores commit atomically. Resolve only on transaction completion. */
+export function saveStorageData(data: StoredData): Promise<void> {
+  lastSavedMs = Math.max(Date.now(), lastSavedMs + 1);
+  const snapshot = structuredClone({
+    ...data,
+    schemaVersion: 3,
+    savedAt: new Date(lastSavedMs).toISOString(),
+  });
+  const operation = writes
+    .catch(() => {})
+    .then(async () => {
+      try {
+        const db = await openDB();
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(
+            [
+              "tasks",
+              "projects",
+              "reviews",
+              "devices",
+              "settings",
+              "meta",
+              "syncMeta",
+            ],
+            "readwrite",
+          );
+          for (const entity of ["tasks", "projects"] as const) {
+            const request = tx.objectStore(entity).getAll();
+            request.onsuccess = () => {
+              const before = new Map(
+                request.result.map((item: any) => [item.id, item]),
+              );
+              const after = new Map(
+                snapshot[entity].map((item) => [item.id, item]),
+              );
+              for (const id of new Set([...before.keys(), ...after.keys()])) {
+                const changed =
+                  JSON.stringify(before.get(id)) !==
+                  JSON.stringify(after.get(id));
+                const key = `${entity}:${id}`;
+                const row = tx.objectStore("syncMeta").get(key);
+                row.onsuccess = () => {
+                  if (changed || !row.result)
+                    tx.objectStore("syncMeta").put({
+                      id: key,
+                      entity,
+                      entityId: id,
+                      revision: (row.result?.revision || 0) + 1,
+                      updatedAt: snapshot.savedAt,
+                      deleted: !after.has(id),
+                      value: after.get(id),
+                    });
+                };
+              }
+            };
+          }
+          for (const name of [
+            "tasks",
+            "projects",
+            "reviews",
+            "devices",
+          ] as const) {
+            const store = tx.objectStore(name);
+            store.clear();
+            for (const item of snapshot[name]) store.put(item);
+          }
+          tx.objectStore("settings").put({
+            key: "appSettings",
+            value: snapshot.settings,
+          });
+          tx.objectStore("meta").put({
+            key: "snapshot",
+            schemaVersion: 3,
+            savedAt: snapshot.savedAt,
+          });
+          tx.oncomplete = () => resolve();
+          tx.onerror = tx.onabort = () =>
+            reject(tx.error || new Error("本地保存失败"));
+        });
+        // A completed IndexedDB commit supersedes its fallback.
+        try {
+          localStorage.removeItem(FALLBACK_KEY);
+        } catch {}
+      } catch (error) {
+        try {
+          localStorage.setItem(FALLBACK_KEY, JSON.stringify(snapshot));
+        } catch {
+          throw new Error("本地保存失败，请导出备份并检查设备存储空间", {
+            cause: error,
+          });
+        }
+      }
+    });
+  writes = operation;
+  return operation;
+}
+export function flushStorageData() {
+  return writes;
 }
