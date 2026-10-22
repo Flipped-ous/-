@@ -1,3 +1,4 @@
+import { HelpDialog } from '../components/HelpDialog.tsx';
 import { ReminderControl } from "../components/ReminderControl.tsx";
 import { SyncConnectionControl } from "../components/SyncConnectionControl.tsx";
 import React, { useState, useRef } from "react";
@@ -7,6 +8,7 @@ import { parseNotesBackup } from "../services/notesBackup.ts";
 import { validateBackupData } from "../utils/taskLogic.ts";
 
 interface MoreViewProps {
+  lastBackupAt?: string;
   settings: AppSettings;
   onChangeReminder?: (patch: Partial<AppSettings>) => void;
   onRefreshReminders?: () => void;
@@ -29,6 +31,7 @@ interface MoreViewProps {
 
 export const MoreView: React.FC<MoreViewProps> = ({
   settings,
+  lastBackupAt,
   onChangeReminder,
   onRefreshReminders,
   devices,
@@ -44,6 +47,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
   onImportBackup,
   onShowToast,
 }) => {
+  const [help, setHelp] = useState(false);
   // Backup Import preview modal state
   const [pendingImportData, setPendingImportData] = useState<BackupData | null>(
     null,
@@ -128,7 +132,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
 
         <button
           type="button"
-          onClick={() => onShowToast("今日有序：东方极简自然待办")}
+          onClick={() => setHelp(true)}
           aria-label="帮助与提示"
           className="w-8 h-8 rounded-full bg-[#F5F1E8] dark:bg-[#342E28] hover:bg-[#EBE4D6] text-[#786E64] dark:text-[#A89E92] flex items-center justify-center transition-colors cursor-pointer"
         >
@@ -238,6 +242,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
               </span>
             </div>
 
+            <p className="backup-last">{lastBackupAt ? `最近备份：${new Date(lastBackupAt).toLocaleString('zh-CN', {month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}` : '最近备份：暂无已确认的保存记录'}</p>
             {/* Import */}
             <div
               role="button"
@@ -277,6 +282,7 @@ export const MoreView: React.FC<MoreViewProps> = ({
         </section>
       </div>
 
+      {help && <HelpDialog onClose={() => setHelp(false)} />}
       {/* Backup Import Preview & Confirmation Dialog */}
       {showImportModal && importPreviewCounts && (
         <div

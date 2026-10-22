@@ -36,6 +36,7 @@ export interface ProjectDoc {
 }
 
 export interface Project {
+  order?: number;
   id: string;
   name: string;
   description: string;

@@ -885,3 +885,13 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Notes shares the task pages' title, spacing and paper palette. */
+.notes-home{padding-top:10px;color:var(--agenda-ink)}
+.notes-compact-header{margin-bottom:8px;min-height:44px}
+.notes-compact-header h1{font-size:20px}
+.notes-secondary{margin:4px 0 8px}
+.notes-list{gap:10px}
+.notes-home .note-card{padding:14px;border-radius:14px;border-color:var(--agenda-line);background:var(--agenda-card);color:var(--agenda-ink)}
+.notes-home .note-card h2{font-size:14px}
+.notes-home .note-card-labels{margin-bottom:6px}

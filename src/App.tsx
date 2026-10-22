@@ -1,3 +1,6 @@
+import { readBackupReceipt, recordBackupReceipt } from './services/backupReceipt.ts';
+import { reorderProject } from './services/projectRepository.ts';
+import { sortProjects } from './utils/projectOrder.ts';
 import { reconcileReminders, onReminderAction } from "./services/reminders.ts";
 /**
  * @license
@@ -122,6 +125,8 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [hydrated, setHydrated] = useState(false);
+  const [lastBackupAt, setLastBackupAt] = useState(readBackupReceipt);
+  const exportBusy = useRef(false);
   const [storageError, setStorageError] = useState("");
   const [now, setNow] = useState(() => new Date());
   const [reviewPeriod, setReviewPeriod] = useState<"week" | "month">("week");
@@ -375,7 +380,7 @@ export default function App() {
   const publishProjectChange = (result: { tasks: Task[]; projects: Project[]; notes: Note[] }) => {
     flushSync(() => {
       businessRef.current = { ...businessRef.current, tasks: result.tasks, projects: result.projects };
-      setTasks(result.tasks); setProjects(result.projects);
+      setTasks(result.tasks); setProjects(sortProjects(result.projects));
       publishCommittedNotes(result.notes);
     });
   };
@@ -438,8 +443,15 @@ export default function App() {
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    setProjects((prev) => [proj, ...prev]);
     showToast("新项目创建成功");
+    setProjects((prev) => [proj, ...sortProjects(prev)].map((p, order) => ({ ...p, order })));
+  };
+  const handleReorderProjects = async (id: string, target: string, after: boolean) => {
+    if (batchLock.current) return;
+    batchLock.current = true;
+    try { const result = await reorderProject(id, target, after); setProjects(result.projects); }
+    catch (error) { showToast((error as Error).message || '项目排序保存失败，请重试'); }
+    finally { batchLock.current = false; }
   };
 
   // Add Review
@@ -467,19 +479,17 @@ export default function App() {
 
   // Export Data JSON
   const handleExportData = async () => {
+    if (exportBusy.current) return;
+    exportBusy.current = true;
     const backup = createBackup(tasks, projects, reviews, settings);
     try {
-      await exportBackupFile(await createNotesBackup(backup));
-      showToast(
-        Capacitor.isNativePlatform()
-          ? "已打开备份保存与分享"
-          : "已导出完整本地备份（含图片 .zip）",
-      );
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : "备份导出未完成，请重试",
-      );
-    }
+      const result = await exportBackupFile(await createNotesBackup(backup));
+      if (result.status === 'saved') {
+        try { setLastBackupAt(recordBackupReceipt(result)); showToast('已保存完整备份（含图片 ZIP）'); }
+        catch { showToast('文件已保存，但最近备份时间记录失败'); }
+      } else showToast(result.status === 'cancelled' ? '已取消备份保存' : '已发起备份下载，请确认文件保存完成');
+    } catch (error) { showToast(error instanceof Error ? error.message : '备份导出未完成，请重试'); }
+    finally { exportBusy.current = false; }
   };
 
   // Import Data JSON
@@ -494,7 +504,7 @@ export default function App() {
     );
     setDeletions([]);
     setTasks(result.tasks);
-    setProjects(result.projects);
+    setProjects(sortProjects(result.projects));
     setReviews(result.reviews);
     if (result.settings)
       setSettings({
@@ -595,6 +605,7 @@ export default function App() {
                   tasks={tasks}
                   onOpenDetail={setProjectDetail}
                   onAddProject={handleAddProject}
+                  onReorderProject={handleReorderProjects}
                   onDeleteProject={setProjectToDelete}
                   onToggleTask={handleToggleTask}
                   onEditTask={handleOpenEditTask}
@@ -614,6 +625,7 @@ export default function App() {
 
               {activeTab === "more" && (
                 <MoreView
+                  lastBackupAt={lastBackupAt}
                   settings={settings}
                   onChangeReminder={(patch) =>
                     setSettings((s) => ({ ...s, ...patch }))

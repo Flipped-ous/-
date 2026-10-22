@@ -2,7 +2,7 @@
 
 ## 当前状态
 
-版本 **1.2.6 / versionCode 13**，Android 包名 `com.jinriyouxu.app`。React + TypeScript + Vite + Capacitor，五个入口：今天、待办、项目、笔记、更多。保持暖米白、砖红和鼠尾草绿，默认轻动效并尊重系统减少动态效果。
+版本 **1.2.8 / versionCode 15**，Android 包名 `com.jinriyouxu.app`。React + TypeScript + Vite + Capacitor，五个入口：今天、待办、项目、笔记、更多。保持暖米白、砖红和鼠尾草绿，默认轻动效并尊重系统减少动态效果。
 
 ## 模块与维护入口
 
@@ -40,3 +40,7 @@ CI 检查 Windows／Ubuntu 与 UTC／Asia/Shanghai 组合的前端检查。Andro
 - [版本日志](../CHANGELOG.md)、[2026-10-20 日志](DAILY_LOG_2026-10-20.md)、[1.2.6 说明](RELEASE_1.2.6.md)
 - [验证记录与真机待办](VALIDATION.md)、[桌面小组件](WIDGET.md)、[收工整理](WRAP_UP.md)
 - [电脑同步接入边界](SYNC.md)、[仅供讨论的精简建议](SIMPLIFICATION.md)
+
+1.2.7补充：Project.order及projectRepository.reorderProject负责事务排序；backupReceipt是本机导出记录，BackupExportPlugin负责系统文件写入回执；HelpDialog提供操作指南。笔记首页改为共享紧凑标题和图标搜索。见[本轮日志](DAILY_LOG_2026-10-23.md)。
+
+1.2.8补充：projectDrag计算拖动预览槽位，ProjectsView冻结显示列表配合SwipeableProject松手保存；useSearchDismissal订阅独立键盘事件；CompactEntry统一日历工具行。详见[本轮补充日志](DAILY_LOG_2026-10-23_1.2.8.md)。

@@ -4,6 +4,8 @@ export class NavigationVisibility {
   private editing = false;
   private keyboard = false;
   private listeners = new Set<() => void>();
+  private keyboardListeners = new Set<() => void>();
+  subscribeKeyboard = (listener: () => void) => { this.keyboardListeners.add(listener); return () => { this.keyboardListeners.delete(listener); }; };
 
   getSnapshot = () => this.dialogs.size > 0 || this.editing || this.keyboard;
   isKeyboardVisible = () => this.keyboard;
@@ -22,11 +24,15 @@ export class NavigationVisibility {
     return () => this.change(() => { this.dialogs.delete(owner); });
   };
   setEditing = (editing: boolean) => this.change(() => { this.editing = editing; });
-  setKeyboardVisible = (visible: boolean) => this.change(() => {
+  setKeyboardVisible = (visible: boolean) => {
+    const previous=this.keyboard;
+    this.change(() => {
     // Android Back can close the IME while its input retains DOM focus.
     if (this.keyboard && !visible) this.editing = false;
     this.keyboard = visible;
-  });
+    });
+    if(previous!==visible) this.keyboardListeners.forEach(listener=>listener());
+  };
 }
 
 export const navigationVisibility = new NavigationVisibility();

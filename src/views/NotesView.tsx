@@ -1,10 +1,12 @@
-import React, { useMemo, useState, useSyncExternalStore } from "react";
+import { useSearchDismissal } from '../hooks/useSearchDismissal.ts';
+import React, { useEffect, useRef, useMemo, useState, useSyncExternalStore } from "react";
 import type { Note, Project, Task } from "../types/index.ts";
 import { subscribeNotes, getNotes } from "../services/notesRepository.ts";
 import { documentText, noteTime, sortNotes } from "../utils/notes.ts";
 import { SegmentedControl } from "../components/SegmentedControl.tsx";
 import { Icon } from "../components/NoteWorkspace.tsx";
 import { useDialog } from "../hooks/useDialog.ts";
+import { usePageMemory, usePageScroll } from '../hooks/usePageMemory.ts';
 import { calculateReviewStats } from "../utils/taskLogic.ts";
 
 export function NoteCard({
@@ -54,10 +56,15 @@ export function NotesView({
   onNew: () => void;
 }) {
   const notes = useSyncExternalStore(subscribeNotes, getNotes, getNotes);
-  const [filter, setFilter] = useState("all"),
-    [query, setQuery] = useState(""),
-    [reviewOnly, setReviewOnly] = useState(false),
-    [stats, setStats] = useState(false);
+  const [filter, setFilter] = usePageMemory('notes-filter', 'all');
+  const [query, setQuery] = usePageMemory('notes-search', '');
+  const [reviewOnly, setReviewOnly] = usePageMemory('notes-review', false);
+  const [stats, setStats] = useState(false), [searchOpen, setSearchOpen] = useState(false);
+  const input = useRef<HTMLInputElement>(null), searchButton = useRef<HTMLButtonElement>(null);
+  usePageScroll('notes');
+  useEffect(() => { if (searchOpen) input.current?.focus({ preventScroll: true }); }, [searchOpen]);
+  const closeSearch = () => { setSearchOpen(false); input.current?.blur(); };
+  useSearchDismissal(searchOpen,closeSearch);
   const rows = useMemo(
     () =>
       sortNotes(
@@ -74,31 +81,18 @@ export function NotesView({
     [notes, projects, filter, reviewOnly, query],
   );
   return (
-    <div className="notes-home">
-      <header className="notes-header">
-        <div>
-          <h1>笔记</h1>
-          <p>留住所得，常看常新</p>
+    <div className="notes-home" onClick={event=>{if(searchOpen && (event.target as HTMLElement).closest('button') && !(event.target as HTMLElement).closest('[aria-controls="notes-search-field"]')) closeSearch();}}>
+      <header className="agenda-page-header notes-compact-header">
+        <h1><Icon name="auto_stories" />笔记 <small>{notes.length}</small></h1>
+        <div className="agenda-header-actions">
+          <button ref={searchButton} className="compact-icon-button" data-filtered={!!query} title={query?`搜索：${query}`:'搜索笔记'} onPointerDown={e=>{if(searchOpen)e.preventDefault();}} aria-label="搜索笔记" aria-expanded={searchOpen} aria-controls="notes-search-field" onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)}><Icon name="search" /></button>
+          <button className="compact-icon-button compact-add" aria-label="新建笔记" onClick={onNew}><Icon name="add" /></button>
         </div>
-        <button className="note-primary" onClick={onNew}>
-          <Icon name="add" />
-          新建笔记
-        </button>
       </header>
-      <label className="notes-search">
+      {searchOpen && <div id="notes-search-field" className="agenda-search">
         <Icon name="search" />
-        <input
-          aria-label="搜索笔记"
-          placeholder="搜索笔记、内容或项目"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        {query && (
-          <button aria-label="清空笔记搜索" onClick={() => setQuery("")}>
-            <Icon name="close" />
-          </button>
-        )}
-      </label>
+        <input ref={input} aria-label="搜索笔记内容" placeholder="搜索笔记、内容或项目" value={query} onChange={e => setQuery(e.target.value)} onBlur={event=>{if(!(event.relatedTarget as HTMLElement | null)?.closest('button'))closeSearch();}} enterKeyHint="search" onKeyDown={e => { if (!e.nativeEvent.isComposing && (e.key === 'Escape' || e.key === 'Enter')) {e.preventDefault();closeSearch();} }} />
+      </div>}
       <SegmentedControl
         activeId={filter}
         onChange={setFilter}
@@ -130,6 +124,7 @@ export function NotesView({
           <Icon name="chevron_right" />
         </button>
       </div>
+      {!searchOpen && query && <p className="notes-query-summary">搜索“{query}” · {rows.length} 篇</p>}
       <div className="notes-list">
         {rows.map((n) => (
           <NoteCard

@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(AppearancePlugin.class);
+        registerPlugin(BackupExportPlugin.class);
         registerPlugin(WrapReminderPlugin.class);
         registerPlugin(TodayWidgetPlugin.class);
         super.onCreate(savedInstanceState);

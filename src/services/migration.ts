@@ -1,3 +1,4 @@
+import { sortProjects } from '../utils/projectOrder.ts';
 import type {
   Note,
   Task,
@@ -115,7 +116,7 @@ export function migrateStorageData(
     schemaVersion: 3,
     notes: raw.notes === undefined ? reviews.map(reviewToNote) : raw.notes,
     tasks: [...taskMap.values()],
-    projects,
+    projects: sortProjects(projects),
     reviews,
     settings: raw.settings || null,
     devices: raw.devices || [],

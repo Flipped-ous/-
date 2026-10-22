@@ -16,6 +16,7 @@ interface ProjectsViewProps {
   onToggleTask: (taskId: string) => void;
   onEditTask?: (task: Task) => void;
   onOpenDetail?: (project: Project) => void;
+  onReorderProject?: (id: string, target: string, after: boolean) => void | Promise<void>;
   onDeleteProject?: (project: Project) => void;
 }
 
@@ -27,6 +28,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onEditTask,
   onOpenDetail,
   onDeleteProject,
+  onReorderProject,
 }) => {
   const config = useMotion();
   const [filter, setFilter] = useState<
@@ -38,6 +40,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [showNewModal, setShowNewModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [dragSession, setDragSession] = useState<{id:string;rows:Project[];shifts:Record<string,number>} | null>(null);
 
   useDialog(showNewModal, () => setShowNewModal(false));
 
@@ -78,7 +81,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   return (
     <div className="flex-1 flex flex-col w-full max-w-md mx-auto px-4 pt-3 pb-24">
       {/* Top Header */}
-      <header className="flex items-center justify-between mb-3">
+      <header className="flex items-center justify-between mb-3 min-h-11">
         <div className="flex items-center gap-2">
           <span className="material-symbols-outlined text-[22px] text-[#A55340] dark:text-[#C76E59]">
             folder_open
@@ -95,14 +98,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         <button
           type="button"
           onClick={() => setShowNewModal(true)}
-          className="h-8 pl-2.5 pr-3 rounded-full bg-[#A55340] hover:bg-[#873C2A] text-white flex items-center gap-1 shadow-sm active:scale-95 transition-all cursor-pointer"
+          aria-label="新建项目" title="新建项目" className="compact-icon-button compact-add"
         >
-          <span className="material-symbols-outlined text-[17px] leading-none">
-            add
-          </span>
-          <span className="text-[12px] font-medium tracking-wide">
-            新建项目
-          </span>
+          <span className="material-symbols-outlined" aria-hidden="true">add</span>
         </button>
       </header>
 
@@ -110,7 +108,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       <SegmentedControl
         className="mb-3.5"
         activeId={filter}
-        onChange={(val) => setFilter(val as any)}
+        onChange={(val) => { if(!dragSession) setFilter(val as any); }}
         options={[
           { id: 'all', label: '全部', count: projects.length },
           { id: 'active', label: '进行中', count: activeCount },
@@ -122,7 +120,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       {/* Project Cards Stream */}
       <div className="flex flex-col gap-3">
         {!filteredProjects.length && <p className="text-center text-[13px] text-[#82776C] dark:text-[#B3A79B] py-10">{projects.length ? '这个分类下还没有项目' : '还没有项目，点击右上角新建'}</p>}
-        {filteredProjects.map((project) => {
+        {(dragSession?.rows ?? filteredProjects).map((project) => {
           const isExpanded = expandedId === project.id;
 
           // Real-time dynamic calculation from unified tasks
@@ -138,14 +136,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           const docCount = project.docCount || project.docs?.length || 0;
 
           return (
-            <SwipeableProject key={project.id} name={project.name} open={swipedId === project.id}
+            <SwipeableProject id={project.id} onReorder={onReorderProject}
+              shift={dragSession?.shifts[project.id] || 0} sortActive={!!dragSession}
+              onSortStart={id=>{setSwipedId(null);setDragSession({id,rows:filteredProjects,shifts:{}});}}
+              onSortPreview={shifts=>setDragSession(before=>before?{...before,shifts}:before)}
+              onSortEnd={()=>setDragSession(null)} key={project.id} name={project.name} open={swipedId === project.id}
               onOpenChange={open => setSwipedId(current => open ? project.id : current === project.id ? null : current)}
               onDelete={onDeleteProject ? () => onDeleteProject(project) : undefined}>
             <motion.article
-              layout={config.allowScaleEffects}
-              layoutId={
-                config.allowScaleEffects ? `project-${project.id}` : undefined
-              }
+              layout={false}
               transition={{
                 layout: { duration: config.durations.listReflow / 1000 },
               }}

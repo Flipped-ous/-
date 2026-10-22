@@ -59,6 +59,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
   const magneticTarget = useRef<HTMLElement | null>(null);
   const [magnet, setMagnet] = useState({ x: 0, y: 0 });
   const busy = useRef(false);
+  const suppressClick = useRef(false);
   const clearMagnet = () => {
     if (magneticTarget.current) delete magneticTarget.current.dataset.magnetic;
     magneticTarget.current = null;
@@ -138,6 +139,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
       pointer.current !== null
     )
       return;
+    suppressClick.current = false;
     pointer.current = event.pointerId;
     start.current = {
       x: event.clientX,
@@ -261,6 +263,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
     const cancelled =
       event.type === 'pointercancel' || event.type === 'lostpointercapture';
     intent.current = 'idle';
+    suppressClick.current = cancelled || mode !== 'idle';
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
     if (mode === 'reorder') {
@@ -302,13 +305,7 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
     setIsSnappingBack(true);
     setOffsetX(0);
     setIsSwiping(false);
-    if (
-      !cancelled &&
-      mode === 'idle' &&
-      Math.hypot(dx, event.clientY - start.current.y) < 6 &&
-      Date.now() - start.current.time < 400
-    )
-      callbacks.current.onEdit?.(callbacks.current.task);
+
   };
   // Calculate visual feedback linked directly to swipe progress
   const cardWidth = containerRef.current?.offsetWidth || 340;
@@ -403,6 +400,11 @@ export const SwipeableTaskItem: React.FC<SwipeableTaskItemProps> = ({
           event.preventDefault();
           onEdit?.(task);
         }
+      }}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest('button') || busy.current) return;
+        if (!suppressClick.current) callbacks.current.onEdit?.(callbacks.current.task);
+        suppressClick.current = false;
       }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

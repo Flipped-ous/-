@@ -37,3 +37,11 @@ test('IME dismissal cannot reveal navigation underneath an open dialog', () => {
   close();
   assert.equal(state.getSnapshot(), false);
 });
+
+test('keyboard observers receive dismissal even while another dialog keeps navigation hidden',()=>{
+ const state=new NavigationVisibility(),values:boolean[]=[];const close=state.holdDialog();
+ const unsubscribe=state.subscribeKeyboard(()=>values.push(state.isKeyboardVisible()));
+ state.setEditing(true);state.setKeyboardVisible(true);state.setKeyboardVisible(true);state.setKeyboardVisible(false);
+ assert.deepEqual(values,[true,false]);assert.equal(state.getSnapshot(),true);
+ unsubscribe();state.setKeyboardVisible(true);assert.deepEqual(values,[true,false]);close();
+});
